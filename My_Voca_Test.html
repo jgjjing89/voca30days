@@ -1,0 +1,2017 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>내장형 VOCA 시험지 생성기</title>
+<style>
+    body { font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; background: #eef2f5; margin: 0; padding: 0; color: #222; }
+    
+    /* 앱 컨트롤러 화면 */
+    .app-container { max-width: 600px; margin: 50px auto; background: white; padding: 40px; border-radius: 12px; box-shadow: 0 8px 20px rgba(0,0,0,0.08); text-align: center; }
+    .app-container h1 { color: #2c3e50; margin-top: 0; margin-bottom: 10px; font-size: 28px; }
+    .app-container p { color: #666; margin-bottom: 30px; }
+    
+    .setting-box { background: #f8f9fa; padding: 25px; border-radius: 8px; display: flex; flex-direction: column; gap: 20px; align-items: center; margin-bottom: 30px; }
+    .setting-row { display: flex; align-items: center; gap: 15px; font-size: 18px; font-weight: bold; }
+    .setting-row input[type="number"] { width: 80px; padding: 10px; text-align: center; border: 2px solid #cbd5e1; border-radius: 6px; font-size: 18px; font-weight: bold; color: #333; }
+    .setting-row input[type="checkbox"] { transform: scale(1.4); cursor: pointer; }
+    
+    button.btn-generate { background: #3b82f6; color: white; border: none; padding: 16px 40px; font-size: 18px; border-radius: 8px; cursor: pointer; font-weight: bold; box-shadow: 0 4px 6px rgba(59, 130, 246, 0.2); transition: 0.2s; }
+    button.btn-generate:hover { background: #2563eb; transform: translateY(-2px); }
+    
+    /* 화면용 뒤로가기 버튼 */
+    .btn-back { display: none; margin: 20px auto; padding: 10px 20px; background: #64748b; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; }
+    .btn-back:hover { background: #475569; }
+
+    /* 인쇄될 페이지 스타일 (A4 규격) */
+    .print-area { display: none; }
+    .page { background: white; width: 210mm; min-height: 297mm; margin: 0 auto; padding: 15mm 20mm; box-sizing: border-box; position: relative; }
+    .page-break { page-break-after: always; }
+    
+    /* 시험지 헤더 */
+    .test-title { text-align: center; font-size: 26px; font-weight: bold; margin-bottom: 20px; letter-spacing: 1px; border-bottom: 2px solid #000; padding-bottom: 15px; }
+    .student-info { text-align: right; font-size: 15px; font-weight: bold; margin-bottom: 30px; }
+    .student-info span { display: inline-block; width: 120px; border-bottom: 1px solid #000; margin-left: 10px; text-align: center; }
+
+    /* 시험지 본문 (2단 레이아웃) */
+    .exam-grid { display: grid; grid-template-columns: 1fr 1fr; column-gap: 40px; row-gap: 12px; font-size: 15px; }
+    .exam-item { display: flex; align-items: flex-end; border-bottom: 1px dotted #aaa; padding-bottom: 4px; }
+    .exam-num { width: 35px; font-weight: bold; color: #555; text-align: right; padding-right: 10px; }
+    .exam-word { width: 150px; font-weight: bold; font-family: 'Times New Roman', Times, serif; font-size: 17px; }
+    .exam-blank { flex-grow: 1; min-height: 20px; }
+
+    /* 답안지 테이블 */
+    .ans-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 10px; }
+    .ans-table th, .ans-table td { border: 1px solid #777; padding: 6px 8px; text-align: left; }
+    .ans-table th { background: #f0f0f0; text-align: center; }
+
+    @media print {
+        body { background: white; margin: 0; }
+        .app-container, .btn-back { display: none !important; }
+        .print-area { display: block !important; }
+        .page { width: 100%; height: auto; margin: 0; padding: 10mm; box-shadow: none; }
+    }
+</style>
+</head>
+<body>
+
+<div class="app-container" id="appScreen">
+    <h1>📖 VOCA 단어 시험지 출력기</h1>
+    <p>데이터가 내장되어 있습니다. 인쇄할 Day만 선택하세요.</p>
+    
+    <div class="setting-box">
+        <div class="setting-row">
+            <label for="targetDay">출제할 Day :</label>
+            <input type="number" id="targetDay" value="1" min="1" max="30">
+        </div>
+        <div class="setting-row" style="font-size: 16px; color: #555;">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" id="randomize">
+                단어 순서 무작위로 섞기
+            </label>
+        </div>
+    </div>
+    
+    <button class="btn-generate" onclick="generateTest()">🖨️ 시험지 만들기 (PDF 저장)</button>
+</div>
+
+<button class="btn-back" id="btnBack" onclick="goBack()">🔙 다시 설정하기</button>
+<div id="printArea" class="print-area"></div>
+
+
+<script id="vocaDatabase" type="text/plain">
+Day,번호,단어,뜻
+Day,번호,단어,뜻
+1,1,flaunting,"과시하는, 드러내며 자랑하는"
+1,2,stench,"악취, 매우 고약한 냄새"
+1,3,manifestation,"표현, 나타남, 감정 · 현상이 겉으로 드러남"
+1,4,pathetic,"불쌍한, 한심한, 동정 혹은 경멸을 자아내는"
+1,5,commemorate,"기념하다, 사람 · 사건을 기억하여 표하다"
+1,6,ridicule,"조롱하다, 비웃으며 폄하하다"
+1,7,overhear,"엿듣다, 우연히 듣게 되다"
+1,8,savage,"잔혹한, 포악한, 극도로 폭력적이거나 거친"
+1,9,verify,"확인하다, 사실임을 증명하다"
+1,10,chalked,분필로 그리거나 기록된
+1,11,degeneration of culture,"문화의 타락, 문화적 가치의 쇠퇴"
+1,12,wretched,"비참한, 극도로 불행하고 초라한"
+1,13,dignity,"존엄성, 품위와 자기 존중"
+1,14,damp,"(a) 축축한, (n) 약간 젖은 상태"
+1,15,feign,"꾸미다, 가장하다, 감정 · 행동을 거짓으로 보이다"
+1,16,beyond doubt,"의심의 여지 없이, 확실하게"
+1,17,court,"(n) 경기장, (v) 구애하다"
+1,18,amuck / amok,"(a) 미친 듯 날뛰는, (n) 통제가 안 된 상태"
+1,19,distaste,"혐오감, 싫어하거나 거부하는 감정"
+1,20,observant,"잘 관찰하는, 세부를 잘 알아차리는"
+1,21,unveiling,"공개, 발표, 새로운 것을 드러냄"
+1,22,plaque,"명판, 기념 문구가 새겨진 판"
+1,23,rifle,"소총, 긴 총기류"
+1,24,sipping on the flask,"수통을 조금씩 마시기, 플라스크에서 조금씩 마시는 행동"
+1,25,owe,"빚지다, 감사하다, 원인이나 책임을 돌리다"
+1,26,fling onto,"세게 던져 얹다, 힘 있게 던져 올리다"
+1,27,decease,"사망, 공식적 표현의 죽음"
+1,28,elaborate,"상세히 설명하다, 더 자세히 말하다"
+1,29,hornet,말벌
+1,30,vice-versa,"반대로, 거꾸로"
+1,31,intimacy,친밀감
+1,32,semantic contribution,의미적 기여
+1,33,logic gate,논리 게이트
+1,34,cellar,지하 저장고
+1,35,indicate,나타내다
+1,36,stroll,산책하다
+1,37,brace,"버티다, 몸을 지탱하다"
+1,38,proposal,제안서
+1,39,causation,인과 관계
+1,40,fabulous,"굉장히 좋은, 멋진"
+1,41,convince,설득하다
+1,42,derivational suffix,파생 접미사
+1,43,preoccupation,"집착, 몰두"
+1,44,in-depth analysis,심층 분석
+1,45,permit,"(v) 허락하다, (n) 허가증"
+1,46,quantum mechanics,양자역학
+1,47,assume,가정하다
+1,48,deprivation,결핍
+1,49,drag,질질 끌다
+1,50,emission,"배출, 방출"
+1,51,landscape,경관
+1,52,visual waveform,"시각 음파, 소리를 파형으로 시각화한 것"
+1,53,pragmatic skill,"화용 능력, 상황 · 사회적 맥락에 맞게 언어를 사용하는 능력"
+1,54,suprasegmental feature,"초분절적 요소, 음성에서 강세 · 억양 · 리듬 등을 포함하는 요소"
+1,55,coronal,"치조 · 치경음, 혀끝이나 앞부분으로 만드는 자음"
+1,56,atelic,"비종결적인, 자연스러운 끝점이 없는"
+1,57,accurate,(오류 없이) 정확한
+1,58,artificialize,"인공화하다, 자연을 인공적으로 바꾸다"
+1,59,bare,"(a) 텅 빈, 드러난, (n) 아무것도 없는 상태"
+1,60,bound,"묶인, 연결된, 서로 결속된"
+2,1,braised,"볶아 익힌, 약한 불에서 천천히 익힌"
+2,2,concession,"매점, 행사장에서 음식을 파는 곳"
+2,3,conjure,"떠올리다, 마음속에 이미지를 불러오다"
+2,4,dorsal,"후설음의, 혀 뒤쪽으로 조음되는"
+2,5,reconfiguration,재구성
+2,6,intonation,"억양, 말의 높낮이 변화"
+2,7,irritation,"짜증, 불쾌하거나 신경 쓰이는 감정"
+2,8,isolated,"고립된, 혼자 떨어진"
+2,9,delicacy,"섬세함, 미묘함"
+2,10,landmark,"이정표, 상징물, 눈에 띄는 장소"
+2,11,leash,"목줄, 동물을 통제하기 위해 목에 매는 줄"
+2,12,manicured,"정교하게 다듬어진, 손질이 잘 된"
+2,13,rate of speech,말하는 속도
+2,14,mishap,"불운한 일, 작은 사고"
+2,15,mixed-ability,"다양한 수준의, 능력 차가 나는"
+2,16,mountain mold,"산 모형, 화산 실험용 점토 구조"
+2,17,peer feedback,"동료 피드백, 서로의 작업에 대한 평가"
+2,18,recreational,"오락의, 즐거움 목적으로 하는"
+2,19,end-weight principle,"종말가중 원리, 무거운 요소가 뒤로 가는 경향"
+2,20,salutation,"인사말, 편지의 첫 인사"
+2,21,scolded,"야단맞은, 꾸중을 들은"
+2,22,seize,"붙잡다, 갑자기 움켜잡다"
+2,23,signify,"의미하다, 상징하거나 표시하다"
+2,24,soliloquy,"독백, 혼자 있을 때의 고백적 말"
+2,25,spigot,"수도꼭지, 물이 나오는 장치"
+2,26,spectator sports,"관중 스포츠, 많은 사람들이 관람하는 스포츠"
+2,27,startle,"깜짝 놀라게 하다, 갑작스레 놀라게 하다"
+2,28,process loss,"과정 손실, 그룹 활동에서 조정·동기 저하로 발생하는 생산성 감소"
+2,29,sustainable,"지속 가능한, 환경을 해치지 않는"
+2,30,proactive,"선제적으로 행동하는, 문제가 생기기 전에 미리 대응하는"
+2,31,vermilion,"주홍색, 선명한 붉은색 안료나 색채"
+2,32,sea swine,"바다 돼지, 중세 지도에 등장한 괴물형 바다 생물"
+2,33,close-up shot,"클로즈업 장면, 얼굴이나 작은 부분을 크게 잡는 촬영"
+2,34,noise pollution,"소음 공해, 과도한 소음으로 인한 환경 피해"
+2,35,strain,"압박, 부담, 긴장이나 압력을 주는 힘"
+2,36,labial,"순음, 입술로 조음되는 자음"
+2,37,side effect,"부작용, 의도하지 않은 추가 효과"
+2,38,mute play,"무언 연기, 말 없이 표정이나 움직임으로 드러내는 연기"
+2,39,trace,"자취, 흔적, 남아 있는 작은 표시"
+2,40,windfall,"바람에 떨어진 과일, 뜻밖의 횡재, 자연스럽게 떨어진 것 또는 갑작스러운 이익"
+2,41,overtly,"공공연하게, 숨기지 않고 드러내어"
+2,42,convey,"전달하다, 의미나 감정을 전하다"
+2,43,recursive,"재귀적인, 구조가 반복적으로 안에 포함되는"
+2,44,extension activity,"확장 활동, 기본 과제를 마친 후의 추가 활동"
+2,45,telegram,"전보, 짧은 메시지를 급히 보내는 통신"
+2,46,intimate,"친밀한, 가까운 관계를 나타내는"
+2,47,fronted,"전위된, 문장 앞쪽으로 이동된"
+2,48,part,"헤어지다, 갈라지다, 서로 떨어지게 되다"
+2,49,critic,"비평가, 분석하거나 평가하는 사람"
+2,50,stem,"(언어학) 어간, 단어의 핵심 의미를 담는 형태"
+2,51,hypocritical,"위선적인, 말과 행동이 불일치하는"
+2,52,worksheet,"학습지, 학생 활동을 위해 준비된 과제지"
+2,53,specification,"명세, 요구 기준, 평가·활동을 위한 구체 기준"
+2,54,whereabouts,"소재, 행방"
+2,55,worthwhile,가치 있는
+2,56,wavelength,"파장, (은유) 사고 방식"
+2,57,vertical,수직의
+2,58,uninhibited,"억압되지 않은, 거리낌 없는"
+2,59,underlie,기초가 되다
+2,60,vehicle,"차량, (비유) 매개체, 전달 장치, (문학) 알레고리·은유에서 전달하는 형상, (언어학) 의미·기능을 운반하는 형식적 요소를 가리킬 때 사용"
+3,1,vantage,"우월, 유리함, 좋은 위치"
+3,2,testament,"증거, 유언"
+3,3,violation,"위반, (언어학에서) 규칙·격률을 어기는 행위"
+3,4,theta-criterion,세타 기준 (언어학 용어)
+3,5,collaboratively,"공동으로, 협력하여"
+3,6,neurological,신경(학)의
+3,7,recalibration,"재조정, 재측정"
+3,8,navigate,"(길을) 찾다, 항해하다"
+3,9,haggling,"(값을) 흥정, 실랑이"
+3,10,temper tantrum,"(아이의) 짜증, 분통"
+3,11,excessive,"과도한, 지나친"
+3,12,disregard,"무시, 경시"
+3,13,fervently,"열렬히, 강렬하게"
+3,14,scornful,"경멸하는, 비웃는"
+3,15,failing,"실패, 결함"
+3,16,guarantee,"보장하다, 확신하다"
+3,17,falsity,"거짓, 허위, 틀림"
+3,18,logically,"논리적으로, 이치에 맞게"
+3,19,equivalent,"동등한, 상당하는"
+3,20,truth-value,진릿값
+3,21,contradiction,"모순, 반박"
+3,22,attribute,"속성, 특성"
+3,23,particularity,"특수성, 특이성, 까다로움"
+3,24,reside,"거주하다, (속성 등이) 존재하다, 있다"
+3,25,dispute,"논쟁, 분쟁"
+3,26,condition,"조건, 상태"
+3,27,maxim of quantity,양의 격률
+3,28,restriction,"제한, 규제"
+3,29,topical,"주제의, 시사적인"
+3,30,structure,"구조, 조직"
+3,31,obligation,의무
+3,32,implement,"실행하다, 이행하다"
+3,33,feedback,"피드백, 반응"
+3,34,schemata,스키마 (도식, 인지 틀)
+3,35,contraction,"수축, 축소, (언어) 축약형"
+3,36,phylogenetically,계통 발생적으로
+3,37,abundance,"풍부, 다수"
+3,38,biome,생물군계
+3,39,denizen,"(특정 장소의) 주민, 서식 동물"
+3,40,conceptualized,개념화하다
+3,41,diversity,"다양성, 차이"
+3,42,drifting,"표류하는, 떠다니는"
+3,43,transparency,"투명성, 정직함"
+3,44,manufacture,"제조하다, 생산하다"
+3,45,outlive,"~보다 오래 살다, ~을 견뎌내다"
+3,46,engrave,"새기다, 조각하다"
+3,47,unmoved,"감동하지 않은, 미동도 않는"
+3,48,pierce,"꿰뚫다, 구멍을 뚫다"
+3,49,persuade,"설득하다, 납득시키다"
+3,50,scanning,"훑어보기, 정밀 검사"
+3,51,tolerate,"참다, 견디다, 용인하다"
+3,52,imprint,"찍다, 감명시키다, (심리) 각인하다"
+3,53,process,"처리하다, 가공하다"
+3,54,transform,"변형시키다, 완전히 바꾸다"
+3,55,peruse,"정독하다, 주의 깊게 읽다"
+3,56,avoid,"피하다, 모면하다"
+3,57,compulsive,"강박적인, 억제할 수 없는"
+3,58,shun,"피하다, 멀리하다, 따돌리다"
+3,59,foster,"조성하다, 발전시키다, 기르다"
+3,60,unattested,"입증되지 않은, 실제 사용되지 않는"
+4,1,forgo,"포기하다, 없이 지내다"
+4,2,distinguish,"구별하다, 식별하다"
+4,3,brainstorm,"아이디어를 떠올리다, 브레인스토밍하다"
+4,4,arms,"품, 팔(사람의 신체 일부), 무기, 병기"
+4,5,reflect,"반영하다, 심사숙고하다"
+4,6,conceive,"상상하다, 생각하다, 임신하다"
+4,7,enhance,"향상시키다, 높이다"
+4,8,encourage,"격려하다, 장려하다"
+4,9,promote,"촉진하다, 홍보하다, 승진시키다"
+4,10,visualize,"시각화하다, 마음속으로 그리다"
+4,11,shipwreck,"난파, 난파선"
+4,12,trace,"자취, 흔적"
+4,13,castaway,"조난자, 표류자"
+4,14,marine avian,바다새 (해양 조류)
+4,15,cuttlefish,갑오징어
+4,16,quill,"깃펜, (고슴도치 등의) 가시"
+4,17,terrace,"계단식 논 · 밭, 테라스"
+4,18,subscription,"구독(료), 기부"
+4,19,evangelist,"전도사, 열렬한 지지자"
+4,20,convert,"(n) 개종자, 전향자, (v) 개종하다, 전환하다"
+4,21,agony,"극심한 고통, 괴로움"
+4,22,sloth,"나무늘보, 나태, 게으름"
+4,23,pursuit,"추구, 뒤쫓음, 일"
+4,24,conditional,"조건문(조건절), 어떤 사건이나 상황이 특정 조건 충족 여부에 따라 달라지는 문장 구조"
+4,25,acceptable behavior,용인되거나 허용 가능한 행동
+4,26,ditransitive,(목적어를 2개 가지는) 이중 타동사
+4,27,rubric,"(시험 등의) 지침, 규정, 표제"
+4,28,inquiry,"문의, 질문, 조사"
+4,29,pseudonym,"필명, 가명"
+4,30,stipulation,"규정, 조건, 조항"
+4,31,calamity,"재앙, 불행"
+4,32,threshold,"문지방, 기준점, 시발점"
+4,33,addiction,중독
+4,34,parasite,"기생충, 기생충 같은 사람"
+4,35,purveyor,"(식료품 등을) 공급하는 사람, 조달업자"
+4,36,turpitude,"비열, 타락"
+4,37,selflessness,"이타심, 무사함"
+4,38,gait,"걸음걸이, 태도"
+4,39,pathos,"연민의 정, 비애, (수사학) 감성"
+4,40,ordeal,"시련, 고난"
+4,41,auxiliary,"조동사, 보조적인 요소"
+4,42,comparative,"비교의, 상대적인"
+4,43,disyllabic,이음절의
+4,44,dummy,"모형, 마네킹, 가짜"
+4,45,interlanguage,중간언어
+4,46,deviation,"일탈, 편차, 벗어남"
+4,47,scatter,"(n) 무질서하게 흩어진 무리, (v) 흩어지다"
+4,48,practicality,"실용성, 현실성"
+4,49,analogy,"비유, 유추"
+4,50,abyss,"심연, 깊은 구렁"
+4,51,redemption,"구원, 속죄, 회복"
+4,52,revelation,"폭로, 계시"
+4,53,prohibition,"금지, 금지령"
+4,54,chatbot,챗봇
+4,55,theft,"절도, 도둑질"
+4,56,metacognitive,메타인지의
+4,57,awareness,"인식, 자각"
+4,58,omnipresent,"세계적인, 전반적인"
+4,59,endorsement,"지지, 승인, 보증"
+4,60,problem-solving,문제 해결
+5,1,translate,"번역하다, 해석하다"
+5,2,suburban,교외의
+5,3,inevitably,"필연적으로, 불가피하게"
+5,4,tawny,"황갈색의, 누런"
+5,5,sinewy,"힘줄이 많은, 강인한"
+5,6,toil-hardened,고된 노동으로 단련된
+5,7,literary,"문학의, 문예의"
+5,8,persistent,"끈기 있는, 집요한, 지속적인"
+5,9,wicked,"사악한, 못된"
+5,10,aristocratic,"귀족적인, 귀족의"
+5,11,disenfranchised,권리(특히 투표권)가 박탈된
+5,12,phonetic,"음성(학)의, 표음식의"
+5,13,wilderness,"황야, 미지의 공간"
+5,14,diagnostic test,"진단 검사, 언어학에서는 문장의 구조적 의미적 속성을 판별하는 테스트"
+5,15,subsidiary,"보조의, 부차적인"
+5,16,intensive,"집중적인, 집약적인"
+5,17,pleasurable,"즐거운, 기쁜"
+5,18,sedentary,"주로 앉아서 지내는, 정주성의"
+5,19,grumpy,"성격이 나쁜, 심술궂은"
+5,20,prioritize,우선순위를 정하다
+5,21,indulgence,"탐닉, 사치, 관용"
+5,22,ultimately,"궁극적으로, 결국"
+5,23,interrelated,상호 관련된
+5,24,narrative,"이야기, 서사"
+5,25,implicature,"함축, 암시적 의미"
+5,26,vendor,"노점 상인, 판매자"
+5,27,primordial,"원시의, 태고의, 근본적인"
+5,28,messiness,"혼란, 뒤죽박죽"
+5,29,fishmonger,"생선 장수, 어물전 주인"
+5,30,aroma-free,"향이 없는, 냄새가 없는"
+5,31,scrutiny,"정밀 조사, 세밀한 관찰"
+5,32,sanctuary,"피난처, 안식처, 신성한 장소"
+5,33,adolescent,"(a) 청소년기의, 사춘기의, (n) 청소년"
+5,34,skip over,"건너뛰다, 생략하다"
+5,35,selectively,"선택적으로, 가려서"
+5,36,efficient,"효율적인, 능률적인"
+5,37,improvisation,즉흥성
+5,38,malleable,"(성격 등이) 유연한, 잘 변하는, 가단성의"
+5,39,visceral,"감정적인, 본능적인"
+5,40,lucid,"명료한, 이해하기 쉬운"
+5,41,succinct,"간결한, 명료한"
+5,42,bounded,"경계가 있는, 한정된"
+5,43,resilient,"회복력 있는, 탄력적인"
+5,44,maxim of relation,관련성의 격률
+5,45,feasible,"실현 가능한, 실행할 수 있는"
+5,46,maxim,"규범, 격률(담화 격률)"
+5,47,clash,두 강세가 충돌하는 현상
+5,48,result state,결과 상태
+5,49,smallpox,천연두
+5,50,obsolete,"쓸모없는, 구식의"
+5,51,base adjective,기본 형용사
+5,52,passive counterpart,수동태 형태 대응물
+5,53,astute,"기민한, 영리한"
+5,54,prosaic,"평범한, 상상력이 없는"
+5,55,tenacious,"끈질긴, 집요한"
+5,56,foreground,"(n) 전경, (v) ~을 강조하여 부각시키다"
+5,57,incongruous,"조화되지 않는, 부적절한"
+5,58,transient,"일시적인, 덧없는"
+5,59,vindicate,"정당함을 입증하다, 무죄를 입증하다"
+5,60,placate,"달래다, 진정시키다"
+6,1,acquisition,"습득, 획득"
+6,2,pragmatic,"화용론적인, 실용적인"
+6,3,utterance,"발화, 말"
+6,4,retain,"보유하다, 유지하다"
+6,5,symptom,"증상, 어떤 현상을 드러내는 징후"
+6,6,comprehension,이해
+6,7,receptive,"수용적인, (언어) 수동적인"
+6,8,productive,"생산적인, (언어) 발화 능동적인"
+6,9,pedagogy,"교수법, 교육학"
+6,10,prospectus,"안내서, 요강"
+6,11,inductive,귀납적인
+6,12,communicative,의사소통의
+6,13,infiniteness,"비정형성, 시제·인칭의 변화를 갖지 않는 성질"
+6,14,multimodal,다중 양식의
+6,15,embed,"(단단히) 박아 넣다, 삽입하다"
+6,16,reorder,"재정렬하다, 다시 주문하다"
+6,17,staged authenticity,연출된 진정성
+6,18,cadence,"운율, 억양, (말의) 강약"
+6,19,contiguous,"인접한, 근접한"
+6,20,consonant,자음
+6,21,syllable,음절
+6,22,foot,"음보(音步), 강세를 기준으로 한 영어의 리듬 단위"
+6,23,dissimilation,이화 (현상)
+6,24,segment,"부분, 단편"
+6,25,morpheme,형태소
+6,26,suffix,접미사
+6,27,repetition,반복
+6,28,seclusion,"격리, 은둔"
+6,29,ambiguity,"모호함, 중의성"
+6,30,scope,범위
+6,31,semantically,의미론적으로
+6,32,surface structure,표면 구조
+6,33,reverse,"뒤집다, 반대로 하다, 되돌리다"
+6,34,modal,"양태의, 조동사"
+6,35,variant forms,"이형태, 형태소가 환경에 따라 달라지는 실현형"
+6,36,proposition,명제
+6,37,transitive,타동사의
+6,38,Case-less,격이 없는
+6,39,anomalous,"변칙적인, 이례적인"
+6,40,expletive,"(필요 없는) 덧붙이는 말·구"
+6,41,placeholder,자리 표시자
+6,42,unmarked,"표적이 없는, 보통의"
+6,43,conjunction,접속사
+6,44,coordinating,"등위의, 조정하는"
+6,45,subordinating,종속적인
+6,46,coordinative,"대등하게 연결하는, 협력적인"
+6,47,assessment,평가
+6,48,principle,"원리, 원칙"
+6,49,efficacy,"효능, 유효성"
+6,50,cater to,"(요구·기호를) 충족시키다, 맞추다"
+6,51,consistency,일관성
+6,52,extent,"정도, 규모"
+6,53,validated,"검증된, 입증된"
+6,54,facility,(테스트 항목의) 용이도
+6,55,proportion,"비율, 비례"
+6,56,discrimination,변별(력)
+6,57,commendable,"칭찬할 만한, 훌륭한"
+6,58,miskeying,오답 처리
+6,59,anthropology,인류학
+6,60,pilot testing,"파일럿 테스트, 예비 시험"
+7,1,connective device,"연결 장치, 아이디어를 논리적으로 연결하는 표현"
+7,2,authenticity,"진정성, 진짜임"
+7,3,aesthetic,"미적인, 미학적인"
+7,4,artisan,"장인, 숙련공"
+7,5,intangible,"만질 수 없는, 무형의"
+7,6,tangible,"만질 수 있는, 유형의"
+7,7,overemphasize,지나치게 강조하다
+7,8,craving,"갈망, 열망"
+7,9,ingenious,"솔직 담백한, 기발한"
+7,10,intrusion,"침범, 방해"
+7,11,intercultural,이문화 간의
+7,12,reinforcing,강화하는
+7,13,evolutionary,진화의
+7,14,tenet,"주의, 교리"
+7,15,equilibrium,"균형, 평형"
+7,16,reliable,신뢰할 수 있는
+7,17,alter,"(성질·모양·크기 등을) 바꾸다, 변경하다"
+7,18,manipulator,조종자
+7,19,receiver,"수신자, (신호의) 수용자"
+7,20,disassociated,"분리된, 연관성이 끊어진"
+7,21,potentially,"잠재적으로, 어쩌면"
+7,22,yield,"양보하다, 내어주다"
+7,23,digital,디지털의
+7,24,analog,아날로그의
+7,25,algorithm,알고리즘
+7,26,encoded,"암호화된, 부호화된"
+7,27,finite,"유한한, 한정된"
+7,28,numerical,"숫자의, 수의"
+7,29,representation,"표현, 표상"
+7,30,proctor,(지문 내에서) 음운 변화를 보이는 예시 단어
+7,31,static,"정적인, 고정된"
+7,32,erosion,"침식, 약화"
+7,33,degraded,"손상된, 저하된"
+7,34,virtual,가상의
+7,35,recognition,"인식, 인지"
+7,36,audiovisual,시청각의
+7,37,ethical,"윤리적인, 도덕적인"
+7,38,controversy,"논란, 논쟁"
+7,39,empirical,"경험적인, 실증적인"
+7,40,enterprise,"사업, 새로운 시도"
+7,41,apparent,"분명한, 명백한"
+7,42,expedite,"신속히 처리하다, 촉진하다"
+7,43,complexity,복잡성
+7,44,deduce,"추론하다, 연역하다"
+7,45,demands,"구체적인 요구 (사항), 요청들"
+7,46,locating,"찾아내기, 위치를 파악하기"
+7,47,inferencing,추론하기
+7,48,methodology,"방법론, 연구 방법"
+7,49,exposure,"노출, 접하게 함"
+7,50,facilitate,"용이하게 하다, 촉진하다"
+7,51,detection,"발견, 감지"
+7,52,prominent,"눈에 잘 띄는, 두드러진"
+7,53,noticeable,"눈에 띄는, 현저한"
+7,54,component,"구성 요소, 부품"
+7,55,correspond,"일치하다, 부합하다"
+7,56,appreciate,"이해하다, 가치를 인식하거나 고마움을 느끼다"
+7,57,outward,"바깥의, 외형적인"
+7,58,vibrant,"활기찬, 생기 있는"
+7,59,awaken,"일깨우다, 각성시키다"
+7,60,transformative,"변화시키는, 변형적인"
+8,1,flourish,"번창하다, 잘 자라다"
+8,2,sparse,"드문, 희박한"
+8,3,grandiose,"웅장한, 거창한"
+8,4,staged,"연출된, 계획된"
+8,5,interplay,상호 작용
+8,6,wriggling,꿈틀거리는
+8,7,warily,조심스럽게
+8,8,lag,뒤처지다
+8,9,hollow,"움푹한 곳, 골짜기"
+8,10,solitude,"고독, 외로움"
+8,11,personification,의인화
+8,12,monologue,독백
+8,13,vocalize,"말로 표현하다, 소리 내다"
+8,14,voice recognition,"음성 인식, 말소리를 분석하여 문자나 명령으로 변환하는 기술"
+8,15,aspiring,"야심 있는, 포부가 큰"
+8,16,irremediably,"고칠 수 없게, 회복 불가능하게"
+8,17,undertaking,"(어렵지만 도전적인) 일, 사업"
+8,18,autonomous,"자율적인, 독립적인"
+8,19,farmhand,농장 일꾼
+8,20,saloon,"(과거의) 술집, 선술집"
+8,21,haul,"(무거운 것을) 운반하다, 나르다"
+8,22,rubbish,쓰레기
+8,23,irreplaceable,대체할 수 없는
+8,24,assert,"주장하다, 단언하다"
+8,25,meticulously,"세심하게, 꼼꼼하게"
+8,26,intentionally,"의도적으로, 고의로"
+8,27,steadily,"꾸준히, 점차"
+8,28,permissive,"관대한, 허용을 많이 하는"
+8,29,investigated,"조사된, 연구된"
+8,30,essence,"본질, 핵심"
+8,31,administrator,"관리자, 행정 담당자"
+8,32,arrangement,"준비, (합의된) 약속"
+8,33,by-product,"부산물, 부수적으로 생기는 결과"
+8,34,cognates,동족어
+8,35,compliment,칭찬
+8,36,consensus,"의견 일치, 합의"
+8,37,context,"맥락, 상황"
+8,38,decent,"괜찮은, 품위 있는"
+8,39,discursive,"담론적인, 논증적인"
+8,40,macroeconomic,거시경제의
+8,41,appropriate,"전용하다, 도용하다"
+8,42,preoccupied,"몰두한, 사로잡힌"
+8,43,hierarchical,"위계적인, 계층적인"
+8,44,framed,"(틀에 넣어) 만들어진, 짜인"
+8,45,intercourse,"교류, 교제"
+8,46,excursion,"짧은 여행, 소풍, 탐방"
+8,47,tractable,"다루기 쉬운, 유순한"
+8,48,prenatal,"출산 전의, 태아기의"
+8,49,threshold effect,"임계 효과, 일정 수준을 넘은 뒤에 급격한 변화가 나타나는 현상"
+8,50,multi-layered,다층적인
+8,51,negotiation,"협상, 교섭"
+8,52,novice,"초보자, 미숙한 사람"
+8,53,outcome,"결과, 성과"
+8,54,utilitarian,"실용적인, 공리주의적인"
+8,55,parallelism,"유사성, 병행"
+8,56,individualized,개별화된
+8,57,viewpoint,"관점, 시각"
+8,58,compendium,"요약서, 작품집"
+8,59,proximity,"근접, 가까움"
+8,60,recall,"기억해 내다, 회상하다"
+9,1,referential,"지시하는, 참조의"
+9,2,snippet,"단편, 토막"
+9,3,unsettling,"불안하게 하는, 동요시키는"
+9,4,volatility,"변동성, 불안정성"
+9,5,faith,"신뢰, 믿음"
+9,6,constant flux,끊임없는 변화
+9,7,discretion,"재량, 신중함"
+9,8,confound,"당황하게 하다, 뒤섞다"
+9,9,intrinsic,"본질적인, 내재적인"
+9,10,extrinsic,"외재적인, 외적인"
+9,11,contingency,"우발성, 우발 사건"
+9,12,adverse,"불리한, 해로운"
+9,13,vulnerability,취약성
+9,14,tenacity,"끈기, 불굴의 정신"
+9,15,eminent,"탁월한, 저명한"
+9,16,intrapersonal,내적 관계의
+9,17,stifle,"억누르다, 억압하다"
+9,18,divulge,"누설하다, 폭로하다"
+9,19,recondite,"난해한, 심오한"
+9,20,subtle,"미묘한, 감지하기 힘든"
+9,21,paradoxical,"역설적인, 모순적인"
+9,22,predicament,"곤경, 처지, 궁지"
+9,23,reminiscence,"추억, 회상"
+9,24,reliance,의존
+9,25,resigned,"체념한, 단념한"
+9,26,disdain,"경멸, 무시"
+9,27,humiliation,"굴욕, 창피"
+9,28,sorrow,"슬픔, 비애"
+9,29,pity,"연민, 동정"
+9,30,trivial,"사소한, 하찮은"
+9,31,vicious,"잔인한, 사악한, 악순환의"
+9,32,delicate,"섬세한, 연약한"
+9,33,archaic,"고대의, 구식의"
+9,34,inconsistency,"불일치, 모순"
+9,35,unequivocal,"명확한, 모호하지 않은"
+9,36,suppress,"억누르다, 억압하다"
+9,37,ambiguous,"애매한, 중의적인"
+9,38,conjectural,"추측에 의한, 가설적인"
+9,39,presumably,"아마, 짐작건대"
+9,40,adhere,"(규칙을) 고수하다, 충실히 지키다, 들러붙다"
+9,41,prolonged,오랜 기간의
+9,42,discrepancy,"불일치, 차이"
+9,43,transcend,"초월하다, 넘어서다"
+9,44,resort,"(수단에) 의지하다, 기대다"
+9,45,drastic,"과감한, 급격한"
+9,46,deter,"막다, 단념시키다"
+9,47,pervasive,"만연한, 스며드는"
+9,48,precedent,"선례, 판례"
+9,49,commence,"시작하다, 개시하다"
+9,50,elaboration,"상세한 설명, 정교화"
+9,51,consequence,"결과, 중요성"
+9,52,articulate,"분명히 표현하다, 명확하게 말하다"
+9,53,exhaustive,"철저한, 완전한"
+9,54,concrete,"구체적인, 실질적인"
+9,55,adequate,"충분한, 적절한"
+9,56,obsess,집착하다
+9,57,practical,"실용적인, 실제적인"
+9,58,diminish,"줄어들다, 약해지다"
+9,59,allocate,"할당하다, 배분하다"
+9,60,elucidate,"설명하다, 명료하게 하다"
+10,1,dismantle,"해체하다, 분해하다"
+10,2,corroborate,"입증하다, 확증하다"
+10,3,hinder,"방해하다, 막다"
+10,4,highlight,"강조하다, 눈에 띄게 표시하다"
+10,5,oblige,"의무를 지우다, 강요하다"
+10,6,sanction,"(n) 제재, (v) 승인하다"
+10,7,sever,"단절하다, 끊다"
+10,8,unprecedented,전례 없는
+10,9,venerable,"존경할 만한, 숭고한"
+10,10,warrant,"정당화하다, 보증하다"
+10,11,shrink,"줄어들다, 축소되다"
+10,12,arduous,"고된, 몹시 힘든"
+10,13,barren,"척박한, 불모의"
+10,14,concordancer,콘코던서(용례 검색 도구)
+10,15,coercion,"강압, 강제"
+10,16,discount,"무시하다, 평가절하하다"
+10,17,eloquent,"유창한, 설득력 있는"
+10,18,fiasco,"대실패, 큰 실수"
+10,19,hazard,"위험, 위험 요소"
+10,20,hospitable,"환대하는, 친절한"
+10,21,impartial,"공정한, 편견 없는"
+10,22,juxtapose,"병치하다, 나란히 놓다"
+10,23,lament,"한탄하다, 슬퍼하다"
+10,24,intuition,직관
+10,25,nostalgia,"향수, 그리움"
+10,26,linking word,"접속어, 연결어"
+10,27,observer,관찰자
+10,28,quandary,"딜레마, 곤경"
+10,29,recalcitrant,"저항하는, 다루기 힘든"
+10,30,sycophant,아첨꾼
+10,31,temperance,"절제, 금주"
+10,32,ubiquitous,"어디에나 있는, 편재하는"
+10,33,tunnel vision,"터널 시야, 편협한 시야"
+10,34,venture out,"과감히 나가다, 모험적으로 밖으로 나서다"
+10,35,zephyr,미풍
+10,36,alleviate,"완화하다, 경감하다"
+10,37,benevolent,"자비로운, 인정 많은"
+10,38,cynical,"냉소적인, 회의적인"
+10,39,detrimental,"해로운, 손해를 입히는"
+10,40,empathy,공감
+10,41,fall victim to,~의 희생양이 되다
+10,42,formulated problem,명확히 제시된 문제
+10,43,heterogeneous,"이질적인, 다양한"
+10,44,indispensable,"필수적인, 없어서는 안 될"
+10,45,mitigate,"완화시키다, 경감시키다"
+10,46,negligible,"무시해도 좋은, 하찮은"
+10,47,contemporary,"현대의, 현재의"
+10,48,precarious,"불안정한, 위태로운"
+10,49,profound,"심오한, 깊은"
+10,50,sustain,"유지하다, 지속하다"
+10,51,turbulent,"격변하는, 격동의"
+10,52,terrain,"지형, 지세"
+10,53,wrestle with,"씨름하다, 고군분투하다"
+10,54,conjecture,"추측, 짐작"
+10,55,existential,실존적인
+10,56,engagement,"참여, 몰입"
+10,57,innate,"선천적인, 타고난"
+10,58,perceptive,"통찰력 있는, 감지하는"
+10,59,generative,"생성적인, 생산력 있는"
+10,60,skill-integration,기술 통합
+11,1,mnemonic,"기억술의, 연상 기호의"
+11,2,construct,"(심리적) 개념, 구성체"
+11,3,process-oriented,과정 중심의
+11,4,criterion-referenced,준거 지향의
+11,5,norm-referenced,규준 지향의
+11,6,validity,타당도
+11,7,guideline,"지침, 기준"
+11,8,distractor,오답지
+11,9,plausible,"그럴듯한, 타당해 보이는"
+11,10,elicit,"(반응, 대답을) 끌어내다"
+11,11,distinct,"별개의, 독특한"
+11,12,cultural capsule,문화 소개 자료
+11,13,interactive,상호 작용하는
+11,14,automation bias,자동화 과신 편향
+11,15,acquire,"습득하다, 얻다"
+11,16,phonological,음운론적인
+11,17,assimilation,동화(현상)
+11,18,voicing,유성음화
+11,19,onset,"(음절의) 초성, 두음"
+11,20,coda,"(음절의) 종성, 꼬리"
+11,21,host society,"호스트 사회, 이민자·관광객을 받아들이는 지역 사회"
+11,22,argument,논항
+11,23,predicate,술어
+11,24,thematic role,의미 역할
+11,25,agent,행위자
+11,26,countable,가산의
+11,27,movement,(구문) 이동
+11,28,embedded,"내포된, 삽입된"
+11,29,coherence,"일관성, 통일성"
+11,30,integrate,"통합하다, 합치다"
+11,31,pursue,"추구하다, 쫓다"
+11,32,investigate,"조사하다, 연구하다"
+11,33,analyze,분석하다
+11,34,implication,"영향, 함의"
+11,35,phenomenon,현상
+11,36,abstraction,"추상 개념, 구체적 형태 없이 개념화된 것"
+11,37,manipulate,"조작하다, 능숙하게 다루다"
+11,38,hypothesize,가설을 세우다
+11,39,relevance,"적합성, 관련성"
+11,40,inherent,"내재하는, 고유의"
+11,41,distort,왜곡하다
+11,42,biased,"편향된, 선입견이 있는"
+11,43,unintended,의도하지 않은
+11,44,spontaneous,"자발적인, 즉흥적인"
+11,45,denotational,지시적인 의미의
+11,46,indelible,"지워지지 않는, 잊을 수 없는"
+11,47,cursory,"대충하는, 피상적인"
+11,48,inattentive,"부주의한, 주의를 기울이지 않는"
+11,49,deft,"솜씨 좋은, 능숙한"
+11,50,pensive,"깊은 생각에 잠긴, 수심 어린"
+11,51,ailment,"경미한 질환, 문제"
+11,52,ease,"완화하다, 편하게 하다"
+11,53,convoluted,"복잡한, 뒤얽힌"
+11,54,rely on,~에 의존하다
+11,55,referencing,"참고하기, 인용하기"
+11,56,elusive,"이해하기 어려운, 달아나는"
+11,57,assiduous,"근면한, 끈기 있는"
+11,58,decorum,"단정함, 예의 바름"
+11,59,forthright,"솔직한, 거리낌 없는"
+11,60,complacency,"자만, 안이함"
+12,1,excerpt,"발췌, 인용구"
+12,2,mortised,암숫구멍이 난
+12,3,gouge,"파내다, 도려내다"
+12,4,neglect,"방치, 태만"
+12,5,pruning,"전정, 가지치기"
+12,6,corrosion,부식
+12,7,chisel,끌
+12,8,opaque,"불투명한, 이해하기 어려운"
+12,9,minutia,세부 사항
+12,10,melancholy,우울감
+12,11,rigorous,"엄격한, 정밀한"
+12,12,obscure,"모호한, 이해하기 어려운"
+12,13,vitality,활력
+12,14,reduction,"축소, 감소"
+12,15,regression,퇴보
+12,16,formulate,"정립하다, 만들어내다"
+12,17,prestige,"명성, 위신"
+12,18,convergence,"수렴, 집중"
+12,19,virtually,"사실상, 거의"
+12,20,tasteless,"저속한, 무감각한"
+12,21,doublespeak,이중화법
+12,22,inflated,"과장된, 부풀려진"
+12,23,extraordinary,비범한
+12,24,genuine,"진짜의, 진정한"
+12,25,counterfeit,"위조의, 가짜의"
+12,26,jargon,전문 용어
+12,27,profundity,심오함
+12,28,co-construct,공동 구성하다
+12,29,allude,넌지시 언급하다
+12,30,chump,"바보, 얼간이"
+12,31,lullaby,자장가
+12,32,loophole,"(법률 등의) 허점"
+12,33,bogus,"가짜의, 위조의"
+12,34,epiphany,"(문득 깨닫는) 계시, 통찰"
+12,35,hamper,방해하다
+12,36,facework,체면 관리 행위
+12,37,dominating,지배적인
+12,38,assault,"공격하다, 비난하다"
+12,39,dismiss,묵살하다
+12,40,punctuality,시간 엄수
+12,41,predator,포식자
+12,42,intestine,장(腸)
+12,43,secrete,분비하다
+12,44,pigment,색소
+12,45,compress,압축하다
+12,46,squirt,뿜어내다
+12,47,pseudomorph,가짜 형상
+12,48,decoy,"(v) 유인하다, (n) 유인물"
+12,49,mollusc,연체동물
+12,50,taxonomic,분류학적인
+12,51,luminescent,발광성의
+12,52,rigid,"경직된, 융통성 없는"
+12,53,predetermined,미리 정해진
+12,54,affix,접사
+12,55,syntax,"통사론, 구문론"
+12,56,derivation,"파생, 도출"
+12,57,ellipsis,생략
+12,58,annotate,주석을 달다
+12,59,isomorphic,동형의
+12,60,syllabic,음절을 이루는
+13,1,feature,"(변별) 자질, 특징"
+13,2,obstruent,장애음
+13,3,sonorant,공명음
+13,4,approximant,접근음
+13,5,resonance,"공명, 울림"
+13,6,neutralize,중화시키다
+13,7,error-prone behavior,오류 발생이 쉬운 행동
+13,8,trochaic,"강약격의, 트로카이의"
+13,9,aspirated,기식음화된
+13,10,cohesion,응집성
+13,11,presuppose,전제하다
+13,12,lexical,어휘의
+13,13,coherent,통일성 있는
+13,14,genre,장르
+13,15,norm,규범
+13,16,milieu,"환경, 사회적 배경"
+13,17,paradigm,"모범, 전형, 이론적 틀"
+13,18,rigor,"엄밀함, 철저함"
+13,19,reactive,반응적인
+13,20,pre-emptive,선제적인
+13,21,metalanguage,메타언어
+13,22,recast,재진술
+13,23,schema,"배경지식, 스키마, 도식"
+13,24,spectral,"유령 같은, 스펙트럼의"
+13,25,complementizer,보문사
+13,26,subjacency,인접 조건
+13,27,constraint,"제약, 제한"
+13,28,coordination,등위 연결
+13,29,ongoing,계속 진행 중인
+13,30,complement,보어
+13,31,adjunct,"부가어, 수식어"
+13,32,decode,해독하다
+13,33,redundancy,"중복, 과잉"
+13,34,correlation,"상관관계, 연관성"
+13,35,substitution,대체
+13,36,inflection,굴절
+13,37,phonotactic,음운 규칙의
+13,38,revert,"되돌아가다, 복귀하다"
+13,39,unwarranted,"부당한, 불필요한"
+13,40,complex onset,복잡한 음절 초두군
+13,41,entail,"수반하다, 필요로 하다"
+13,42,transcribe,전사하다
+13,43,accompany,"동반하다, 함께하다"
+13,44,locus,"(특정 활동의) 중심지, 소재"
+13,45,depict,"묘사하다, 그리다"
+13,46,inconsiderate,"경솔한, 사려 깊지 못한"
+13,47,legitimize,"정당화하다, 합법화하다"
+13,48,nominal,"명목상의, 아주 적은"
+13,49,panorama,"전경, 전체적 모습"
+13,50,retrospection,"회고, 반추"
+13,51,adamant,"단호한, 확고한"
+13,52,callous,"냉담한, 무정한"
+13,53,candid,"솔직한, 허심탄회한"
+13,54,discern,"식별하다, 인식하다"
+13,55,decontextualize,맥락에서 분리하다
+13,56,tendency,경향
+13,57,mature,성숙해지다
+13,58,resolute,"확고한, 단호한"
+13,59,enigmatic,"수수께끼 같은, 불가사의한"
+13,60,astound,깜짝 놀라게 하다
+14,1,discourse,"담화, 토론, 언어"
+14,2,netiquette,네티켓 (네트워크 에티켓)
+14,3,spectrum,"스펙트럼, 범위"
+14,4,discrepant,"모순된, 상반된"
+14,5,yardstick,"기준, 척도"
+14,6,integrity,"진실성, 완전성"
+14,7,exquisite,"매우 아름다운, 정교한"
+14,8,outstrip,"능가하다, 뛰어넘다"
+14,9,citation,"인용, 언급"
+14,10,forlorn,"쓸쓸해 보이는, 버려진"
+14,11,draggled,"흙에 더럽혀진, 축 늘어진"
+14,12,puzzled,"어리둥절한, 당황한"
+14,13,makeweight,"보충물, 덤"
+14,14,obliged,"감사하는, 고마워하는"
+14,15,foreboding,"불길한 예감, 전조"
+14,16,luring,"유혹하는, 매혹적인"
+14,17,nervously,"초조하게, 불안하게"
+14,18,vicinity,"근처, 부근"
+14,19,diphthong,이중 모음
+14,20,monophthong,단일 모음
+14,21,generalization,일반화
+14,22,contrast,"대조, 대비"
+14,23,phenomena,현상
+14,24,category,"범주, 분류"
+14,25,monitor,"감시하다, 감독하다"
+14,26,rhetorically,"수사적으로, 설득의 기술로"
+14,27,indice,"지표, 척도"
+14,28,successively,"연속적으로, 잇따라"
+14,29,indoctrination,"주입식 교육, 세뇌"
+14,30,improperly,"부적절하게, 틀리게"
+14,31,degenerative,"퇴행성의, 악화되는"
+14,32,subdued,"차분한, 눌린"
+14,33,dissonance,"불협화음, 불일치"
+14,34,confine,"제한하다, 가두다"
+14,35,dichotomy,"이분법, 양분"
+14,36,reversion,"복귀, 되돌아감"
+14,37,equate,동일시하다
+14,38,subsume,"포함하다, 통합하다"
+14,39,cultivation,"배양, 함양"
+14,40,abnormality,"비정상, 이상"
+14,41,transnational,"초국가적인, 국경을 초월한"
+14,42,acumen,"통찰력, 감각"
+14,43,mobilize,"동원하다, 활용하다"
+14,44,relic,"유물, 잔재"
+14,45,differentiate,"구분하다, 차별화하다"
+14,46,arcane,"난해한, 비밀스러운"
+14,47,axiom,"공리, 자명한 원리"
+14,48,polarized,"양극화된, 대립된"
+14,49,ethos,"정신, 기풍"
+14,50,evince,"분명히 나타내다, 드러내다"
+14,51,enact,"제정하다, 시행하다"
+14,52,transmission,"전달, 전파"
+14,53,aural,청각의
+14,54,reconstruction,"재구성, 복원"
+14,55,reinterpretation,"재해석, 새로운 해석"
+14,56,anomaly,"이례, 변칙"
+14,57,viability,"생존 가능성, 실행 가능성"
+14,58,synthetic,"종합적인, 인공적인"
+14,59,concurrently,"동시에, 병행하여"
+14,60,inadequate,"부적절한, 불충분한"
+15,1,interwoven,"얽혀 있는, 밀접히 관련된"
+15,2,durability,"내구성, 지속성"
+15,3,arbitration,"중재, 조정"
+15,4,ordinance,"조례, 규정"
+15,5,momentum,"탄력, 추진력"
+15,6,reclusive,"은둔한, 세상과 떨어진"
+15,7,lucidity,"명료함, 투명성"
+15,8,recruit,"신입, 신참"
+15,9,Third Culture Kids,제3문화 아이들
+15,10,formative,"형성하는, 발달상의"
+15,11,undeniable,부인할 수 없는
+15,12,alienation,"소외, 이탈"
+15,13,initiate,"시작하다, 개시하다"
+15,14,diaspora,"이산, 흩어짐"
+15,15,amplify,"확대하다, 강화하다"
+15,16,ancillary,"보조적인, 부수적인"
+15,17,persistence,"지속성, 집요함"
+15,18,structuralist,구조주의적인
+15,19,eliminate,"제거하다, 없애다"
+15,20,inflectional,굴절의
+15,21,sequence,"연속, 순서"
+15,22,relational,관계적인
+15,23,precedence,"우선권, 선행"
+15,24,derivative,"파생적인, 독창성 없는"
+15,25,kinetics,"운동학, 동력학"
+15,26,particle,"입자, 미세 요소"
+15,27,determinant,결정 요인
+15,28,conciliate,"달래다, 화해시키다"
+15,29,facetiously,"경박하게, 우스꽝스럽게"
+15,30,babble,재잘거리다
+15,31,reincarnation,환생
+15,32,lucrative,"수익성이 좋은, 돈이 되는"
+15,33,eccentric,"괴짜, 기인"
+15,34,exclude,제외하다
+15,35,categorical,"범주적인, 단정적인"
+15,36,kowtow,굽실거리다
+15,37,contrary,"반대되는, 고집 센"
+15,38,adorn,장식하다
+15,39,dimple,잔물결이 일다
+15,40,metaphor,은유
+15,41,consult,"상담하다, 자문을 구하다"
+15,42,resemblance,"유사성, 닮음"
+15,43,metrical,"율격의, 운문적인"
+15,44,emerge,"나타나다, 드러나다"
+15,45,alteration,"변화, 수정"
+15,46,deletion,삭제
+15,47,medial,중간의
+15,48,prime,"(v) 준비시키다, 미리 영향을 주다, (a) 가장 중요한, 최고의"
+15,49,locative,"처소의, 위치의"
+15,50,inversion,도치
+15,51,preposing,전치
+15,52,postposing,후치
+15,53,reflexive,"반성적인, 되비치는"
+15,54,framework,"체계, 골격"
+15,55,optimization,최적화
+15,56,configuration,"구성, 배치"
+15,57,applicability,적용 가능성
+15,58,encapsulation,"포함, 요약"
+15,59,retrieval,"회상, 검색"
+15,60,appraise,평가하다
+16,1,ratio,비율
+16,2,tally,"집계하다, 기록하다"
+16,3,skim,훑어 읽다
+16,4,calibration,"보정, 정밀 조정"
+16,5,enunciation,"명료한 발음, 분명한 진술"
+16,6,homophone,동음이의어
+16,7,palate,"구개, 미각"
+16,8,gustatory,미각의
+16,9,olfactory,후각의
+16,10,hue,"색조, 색깔"
+16,11,intervention,개입
+16,12,revulsion,"혐오감, 역겨움"
+16,13,semiotics,기호학
+16,14,corpus,코퍼스 (언어 자료 집합)
+16,15,collocation,연어
+16,16,authentic,"진짜의, 실제의"
+16,17,audacious,"대담한, 무모한"
+16,18,stimulus,"자극, 유인"
+16,19,numbness,"무감각, 둔함"
+16,20,dissuade,단념하게 하다
+16,21,coerce,강요하다
+16,22,unfathomable,헤아릴 수 없는
+16,23,incisive,"예리한, 통찰력 있는"
+16,24,quintessential,"전형적인, 본질적인"
+16,25,cardinal,가장 중요한
+16,26,understate,"절제하다, 축소해서 말하다."
+16,27,repertoire,"레퍼토리, 목록"
+16,28,unanimous,만장일치의
+16,29,prerequisite,필수 조건
+16,30,proponent,지지자
+16,31,displace,"옮기다, 대체하다, 쫓아내다"
+16,32,skepticism,"회의론, 의심"
+16,33,monopoly,독점
+16,34,predecessor,"전임자, 앞서 있던 것"
+16,35,reciprocal,상호 간의
+16,36,manifest,"명백한, 분명한"
+16,37,presume,추정하다
+16,38,ramification,"파생적 결과, 여파"
+16,39,attenuated,"약화된, 희석된"
+16,40,undermine,"손상시키다, 약화시키다"
+16,41,ingenuity,"독창성, 기발함"
+16,42,irrevocable,돌이킬 수 없는
+16,43,protocol,"규칙, 절차"
+16,44,frugal,검소한
+16,45,regulation,"규제, 규정"
+16,46,explicate,"설명하다, 해석하다"
+16,47,rhetoric,"수사학, 웅변술"
+16,48,display,"보이다, 전시하다"
+16,49,epistemology,인식론
+16,50,proliferate,"증식하다, 급증하다"
+16,51,confluence,"합류, 융합"
+16,52,haphazard,무계획적인
+16,53,divine,"신성한, 신의"
+16,54,extraneous,"관련 없는, 외부의"
+16,55,constitutive,"구성의, 본질적인"
+16,56,resonate,"울려 퍼지다, 공명하다"
+16,57,stagnant,"정체된, 활발하지 않은"
+16,58,violate,"위반하다, 어기다"
+16,59,surmise,"추정하다, 짐작하다"
+16,60,reiterate,반복하다
+17,1,sociolinguistic,사회 언어학적인
+17,2,solidarity,"연대, 결속"
+17,3,cataphoric,후방 지시적인
+17,4,illocutionary,발화 의도적인
+17,5,perlocutionary,발화 효과적인
+17,6,transaction,"거래, 처리"
+17,7,pseudo-event,가짜 사건
+17,8,mass destruction,대량 파괴
+17,9,insulate,"보호하다, 고립시키다"
+17,10,supply,"(v) 공급하다, (n) 공급량"
+17,11,marginality,"주변성, 비주류"
+17,12,outskirt,"변두리, 외곽"
+17,13,rootless,"뿌리 없는, 정착하지 못한"
+17,14,supercharge,"강화하다, 과부하하다"
+17,15,mandate,"권한, 지시"
+17,16,intriguing,"흥미로운, 매력적인"
+17,17,discontinuous,불연속적인
+17,18,straightforwardly,"솔직하게, 간단하게"
+17,19,undergo,"겪다, 받다"
+17,20,portray,"묘사하다, 그리다"
+17,21,realistically,"현실적으로, 사실적으로"
+17,22,contrived,"억지로 꾸민 듯한, 부자연스러운"
+17,23,alternation,"교대, 번갈아 일어남"
+17,24,distinctive,"독특한, 구별되는"
+17,25,lateral,"측면의, 옆의"
+17,26,breakdown,"고장, 실패"
+17,27,trigger,"촉발하다, 유발하다"
+17,28,moderate,"보통의, 적당한"
+17,29,acclaim,"찬사, 환호"
+17,30,garner,"얻다, 모으다"
+17,31,mortgage,"주택 융자, 담보 대출"
+17,32,stubborn,"완고한, 고집 센"
+17,33,myopia,"근시, 통찰력 부족"
+17,34,destined,~할 운명인
+17,35,dearly,"몹시, 대단히"
+17,36,fault,"비난하다, 나무라다"
+17,37,assess,평가하다
+17,38,mellow,"부드러운, 그윽한"
+17,39,parlor,"응접실, 거실"
+17,40,rosetree,장미 나무
+17,41,dew,이슬
+17,42,musing,"사색, 생각"
+17,43,ammunition,"탄약, (비유) 대응 수단"
+17,44,instinct,본능
+17,45,offensive,"불쾌한, 모욕적인"
+17,46,prototype,"원형, 시제품"
+17,47,counterintuitive,직관에 반하는
+17,48,clout,"영향력, 힘"
+17,49,irrefutable,반박할 수 없는
+17,50,ostensible,"표면상의, 겉치레의"
+17,51,prodigy,"천재, 신동"
+17,52,preclude,"막다, 불가능하게 하다"
+17,53,prudent,"신중한, 현명한"
+17,54,heed,"주의하다, 유념하다"
+17,55,ornate,"화려한, 장식된"
+17,56,perennial,"영속적인, 지속적인"
+17,57,rectify,"수정하다, 바로잡다"
+17,58,expertise,"전문 지식, 전문 기술"
+17,59,invoke,"(권위·법·이유를) 들다, 호소하다"
+17,60,saturate,"흠뻑 적시다, 포화시키다"
+18,1,work on,"~에 전념하다, 작업하다"
+18,2,workload,업무량
+18,3,take part in,참여하다
+18,4,participatory,참여형의
+18,5,come up with,"(생각·해결책을) 내놓다"
+18,6,get through,"이겨내다, 통과하다"
+18,7,devise,고안하다
+18,8,bring about,"초래하다, 야기하다"
+18,9,precipitate,촉진시키다
+18,10,keep up with,뒤처지지 않다
+18,11,attune,"조율하다, 적응시키다"
+18,12,lay out,"구성하다, 설명하다"
+18,13,go over,검토하다
+18,14,merely,"단지, 그저"
+18,15,entirely,완전히
+18,16,constantly,끊임없이
+18,17,primary,"주된, 기본의"
+18,18,medium,"(전달) 매체, 표현 수단"
+18,19,concise,간결한
+18,20,bicultural,이중 문화의
+18,21,hybrid,"혼합된, 복합의"
+18,22,generate,생성하다
+18,23,article,"관사, 논문"
+18,24,periodical,정기 간행물
+18,25,aggregate,총체의
+18,26,modality,"양상, 법성"
+18,27,thermodynamics,열역학
+18,28,competence,"능력, 숙달"
+18,29,proficiency,"숙련, 능숙"
+18,30,ethnicity,민족성
+18,31,heritage,"유산, 전통"
+18,32,language community,언어 공동체
+18,33,variable,변수
+18,34,affiliate,"제휴하다, 소속시키다"
+18,35,articulatory,조음의
+18,36,lexicalization,어휘화
+18,37,institutionalize,제도화하다
+18,38,approximation,"근사치, 유사"
+18,39,prescriptive,규범적인
+18,40,respective,각자의
+18,41,heuristic,"발견적인, 발견법의"
+18,42,parameter,매개변수
+18,43,descriptive,기술적인
+18,44,quantitative,양적인
+18,45,qualitative,질적인
+18,46,substantive,실질적인
+18,47,dialectical,변증법적인
+18,48,wane,"약해지다, 쇠퇴하다"
+18,49,withstand,"견디다, 버티다"
+18,50,uphold,"지지하다, 유지하다"
+18,51,streamline,"능률적으로 하다, 간소화하다"
+18,52,vigilance,"경계, 주의"
+18,53,lineage,"혈통, 가계"
+18,54,attest,"증명하다, 입증하다"
+18,55,confer,"상의하다, (권위·자격을) 부여하다"
+18,56,elude,"피하다, (이해를) 회피하다"
+18,57,benign,"상냥한, 온화한, 양성의"
+18,58,overt,"공공연한, 명백한"
+18,59,fabricate,"조작하다, 제조하다"
+18,60,ardent,"열렬한, 정열적인"
+19,1,vast majority,"대부분, 대다수"
+19,2,questionnaire,설문지
+19,3,preference,선호
+19,4,sermon,"강론, 훈계"
+19,5,charade,몸짓 놀이
+19,6,maximize,극대화하다
+19,7,colloquy,"대화, 대담"
+19,8,prompt,유도하다
+19,9,reformulate,"재구성하다, 다시 말하다"
+19,10,obligatory,"의무적인, 필수의"
+19,11,indiscriminately,무분별하게
+19,12,criterion,"기준, 척도"
+19,13,duration,"기간, 지속 시간"
+19,14,paraphrase,"우회적 표현, 에둘러 말하기"
+19,15,attain,"달성하다, 얻다"
+19,16,sentimentally,감상적으로
+19,17,self-delusion,자기기만
+19,18,apprehension,"불안, 염려"
+19,19,amusement,"재미, 즐거움"
+19,20,subtlety,"미묘함, 교활함"
+19,21,atomistic,"원자론적인, 분자적인"
+19,22,liberty,자유
+19,23,grieve,"몹시 슬퍼하다, 한탄하다"
+19,24,fret,"초조해하다, 안달하다"
+19,25,interference,(언어학) 간섭
+19,26,tap into,"~을 이용하다, ~에 접근하다"
+19,27,rejoice,기뻐하다
+19,28,therapy,치료
+19,29,serial,"연속적인, 하나씩 순서대로 처리되는"
+19,30,remission,(병의) 완화
+19,31,shed,(증상을) 벗어나다
+19,32,plague,"괴롭히다, 문제를 일으키다"
+19,33,maturation,"성숙, 완성"
+19,34,cross,"건너다, 어떤 경계를 넘다"
+19,35,awkward,"어색한, 서투른"
+19,36,appreciable,"상당한, 쉽게 알아볼 수 있는"
+19,37,scorch,"그슬리다, 타는 듯하다"
+19,38,ebb and flow,"성쇠, 밀물과 썰물"
+19,39,reassuringly,안심시키듯이
+19,40,keen,"날카로운, 예리한"
+19,41,patrolman,순찰 경찰관
+19,42,exclaim,"외치다, 소리치다"
+19,43,situational irony,상황적인 아이러니
+19,44,compensate,"보충하다, 상쇄하다"
+19,45,coinage,"(새로운 단어의) 창조, 조어"
+19,46,prefabricated,"사전에 만들어진, 조립식의"
+19,47,inanimate,무생물의
+19,48,cunning,"교활함, 간계"
+19,49,irritability,"과민성, 짜증"
+19,50,transit,"이동, 운송"
+19,51,conceal,숨기다
+19,52,invariably,"변함없이, 언제나"
+19,53,hostile,적대적인
+19,54,illumination,"조명, 비추기"
+19,55,antibacterial,"항균의, 박테리아 억제의"
+19,56,obnoxious,"불쾌한, 아주 싫은"
+19,57,pineal gland,솔방울샘
+19,58,melatonin,멜라토닌
+19,59,mismatch,불일치
+19,60,realign,재조정하다
+20,1,cognitive,인지적인
+20,2,impairment,"손상, 장애"
+20,3,toxic,유독한
+20,4,offset,상쇄하다
+20,5,counter,"반박하다, 대응하다"
+20,6,autonomy,자율성
+20,7,periodic,"주기적인, 정기적인"
+20,8,contention,"논쟁, 주장"
+20,9,attributive,한정적인
+20,10,predicative,서술적인
+20,11,modify,수식하다
+20,12,head noun,핵심 명사
+20,13,in contrast,대조적으로
+20,14,function,기능하다
+20,15,adjective of degree,정도 형용사
+20,16,quantifying adjective,수량 형용사
+20,17,frequency,빈도
+20,18,associative adjective,연관 형용사
+20,19,entity,"개체, 실체"
+20,20,associate,"연관짓다, 결부하다"
+20,21,humid,습한
+20,22,crisp,"상쾌한, 바삭한"
+20,23,breeze,산들바람
+20,24,relief,"안도, 구원"
+20,25,piercing,"꿰뚫는, 날카로운"
+20,26,humidity,습도
+20,27,urban planner,도시 계획가
+20,28,varieties,"변이, 종류"
+20,29,ridge,"능선, 융기"
+20,30,velum,연구개
+20,31,hardly,거의 ~하지 않는
+20,32,realization,실현형
+20,33,shade,"농도, 미묘한 차이"
+20,34,vocalization,모음화
+20,35,delete,삭제하다
+20,36,environment,(음운) 인접 환경
+20,37,midway,중간에
+20,38,hardware store,철물점
+20,39,lean,기대다
+20,40,unlighted,불이 켜지지 않은
+20,41,appointment,약속
+20,42,make certain,확실히 하다
+20,43,tear down,철거하다
+20,44,strike a match,성냥을 켜다
+20,45,pale,창백한
+20,46,square-jawed,네모난 턱의
+20,47,scar,흉터
+20,48,scarfpin,스카프 핀
+20,49,twirl,빙빙 돌리다
+20,50,club,경찰봉
+20,51,beat (policeman's),(경찰관의) 순찰 구역
+20,52,overcoat,"외투, 오버코트"
+20,53,collar,옷깃
+20,54,hurry,서두르다
+20,55,opposite,반대편의
+20,56,doubtfully,의심스럽게
+20,57,grasping,꽉 잡는
+20,58,sure as fate,운명처럼 확실한
+20,59,in existence,존재하는
+20,60,last,지속하다
+21,1,bully,"(n) 괴롭히는 사람, (v) 협박하다, (a) *아주 좋은, 멋진"
+21,2,glare,눈부신 빛
+21,3,gaze upon,~을 응시하다
+21,4,release,놓아 주다
+21,5,snapped,쏘아붙였다
+21,6,Roman (nose),매부리코
+21,7,under arrest,체포된
+21,8,sensible,"현명한, 분별 있는"
+21,9,unfold,펴지다
+21,10,tremble,떨리다
+21,11,wanted (by police),수배 중인
+21,12,plain clothes man,사복 경찰관
+21,13,expected outcomes,예상된 결과
+21,14,opposite (of what's expected),반대
+21,15,limited command,제한된 구사력
+21,16,target language,목표 언어
+21,17,avoidance,회피
+21,18,code switching,언어 전환
+21,19,appeal to authority,권위에 호소
+21,20,strategic competence,전략적인 능력
+21,21,promoting,"촉진하는, 장려하는"
+21,22,communicative competence,의사소통 능력
+21,23,quadricycle,사륜 자전거
+21,24,persevere,"끈기 있게 계속하다, 인내하다"
+21,25,defeat,패배시키다
+21,26,extraposition,외치
+21,27,clausal modifier,절 수식어
+21,28,adjoined,"인접한, 추가된"
+21,29,phrasal constituent,구의 구성 성분
+21,30,VP preposing,VP 선행 이동
+21,31,pronominal NP,대명사 명사구
+21,32,postulated,"가정된, 상정된"
+21,33,morpheme boundary,형태소 경계
+21,34,coincidence,"우연의 일치, 관련 없어 보이는 사건들이 동시에 발생하는 상황"
+21,35,defy,"거역하다, 반항하다"
+21,36,solemn,"엄숙한, 진지한"
+21,37,reverie,"공상, 몽상"
+21,38,bilabial,양순음
+21,39,alveolar,치조음
+21,40,velar,연구개음
+21,41,tense vowel,긴장모음
+21,42,muscular effort,근육의 노력
+21,43,open syllable,개방 음절
+21,44,stress,강세
+21,45,distributionally,분포적으로
+21,46,conflict,"충돌, 상충"
+21,47,loaf around,빈둥거리다
+21,48,retreat,"피난처, 은신처"
+21,49,occasion,"원인, 이유"
+21,50,dismal,"음울한, 비참한"
+21,51,supposition,"가정, 추정"
+21,52,vessel,"배, 선박"
+21,53,defaced,"훼손된, 손상된"
+21,54,surge,"파도, 밀려옴"
+21,55,footstep,발자국
+21,56,continuous,연속적인
+21,57,discrete,"개별적인, 분리된"
+21,58,organism,"유기체, 조직체"
+21,59,unwilling,꺼리는
+21,60,committed,"헌신하는, 약속하는"
+22,1,ascend,"오르다, 상승하다"
+22,2,beseech,"간청하다, 애원하다"
+22,3,candor,"솔직함, 정직함"
+22,4,devout,"독실한, 열렬한"
+22,5,falter,"비틀거리다, 주저하다"
+22,6,immerse,"몰입하다, 담그다"
+22,7,rebuke,"꾸짖다, 비난하다"
+22,8,serene,"고요한, 평온한"
+22,9,initial course goal,초기 과정 목표
+22,10,change the goal set earlier,이전에 설정된 목표를 변경하다
+22,11,one-shot assessment,일회성 평가
+22,12,self-assessment,자기 평가
+22,13,subjective,주관적인
+22,14,objective,객관적인
+22,15,strictly following,엄격하게 따르는
+22,16,challenging,"어려운, 힘든"
+22,17,over-generalization,과잉 일반화
+22,18,negative transfer,부정적 전이
+22,19,positive transfer,긍정적 전이
+22,20,subsequent,"다음의, 이어진"
+22,21,analytic,분석적인
+22,22,global rating,총체적 평점
+22,23,recorded test,녹화된 시험
+22,24,social-skill training,사회성 기술 훈련
+22,25,one-on-one assistance,일대일 보조
+22,26,ill-formed expression,문법적으로 틀린 표현
+22,27,pre-writing activity,쓰기 전 활동
+22,28,meaning-focused feedback,의미 중심 피드백
+22,29,reflective journal,성찰 일지
+22,30,relinquish,"포기하다, 양도하다"
+22,31,oblivion,"망각, 잊혀짐"
+22,32,refine,"정제하다, 세련되게 하다"
+22,33,legitimate,"합법적인, 정당한"
+22,34,enlist,"참여하다, 모집하다"
+22,35,abstract,"추상적인, 구체적 사물이나 경험에서 분리되어 관념적으로 존재하는"
+22,36,contemplate,"심사숙고하다, 곰곰이 생각하다"
+22,37,spurt,"(액체·감정 등의) 분출, 급증"
+22,38,stammer,"(v) 말을 더듬다, (n) 말 더듬기"
+22,39,manuscript,"필사본, 원고"
+22,40,inscription,"비문, 새겨진 글"
+22,41,ultimate,"궁극적인, 최종의"
+22,42,anatomy,"해부학, 인체 구조"
+22,43,frivolous,"경솔한, 하찮은"
+22,44,mediate,"중재하다, 조정하다"
+22,45,adjacent,인접한
+22,46,dormant,"휴면 중인, 잠재된"
+22,47,imminent,"임박한, 곧 일어날"
+22,48,conspicuous,"눈에 잘 띄는, 현저한"
+22,49,frigid,"몹시 추운, 냉담한"
+22,50,futile,"쓸모없는, 헛된"
+22,51,succumb,"(유혹, 질병 등에) 굴복하다, 쓰러지다"
+22,52,deteriorate,"악화되다, 나빠지다"
+22,53,constrain,"강요하다, 제한하다"
+22,54,ponder,"숙고하다, 깊이 생각하다"
+22,55,inborn,"타고난, 선천적인"
+22,56,replicate,"복제하다, 되풀이하다"
+22,57,squander,"낭비하다, 허비하다"
+22,58,stealthy,"은밀한, 몰래 하는"
+22,59,morbid,"병적인, 소름끼치는"
+22,60,austere,"엄격한, 소박한"
+23,1,insertion,삽입
+23,2,non-permissible,허용되지 않는
+23,3,grasp,"파악하다, 이해하다"
+23,4,literally,문자 그대로
+23,5,significance,"중요성, 의미"
+23,6,unbearable,참을 수 없는
+23,7,domesticated,"길들여진, 사육된"
+23,8,underscored,"강조된, 밑줄이 그어진"
+23,9,pinion,"(날개를) 묶다, 속박하다"
+23,10,figurative,비유적인
+23,11,ascertain,"확인하다, 알아내다"
+23,12,prediction,예측
+23,13,volitional,"의지의, 의도적인"
+23,14,consolidation,"통합, 강화"
+23,15,closure,"마무리, 종결"
+23,16,jot down,간단히 적다
+23,17,repository,"저장소, 보관소"
+23,18,reevaluated,재평가된
+23,19,reinventing,"재창조하는, 혁신하는"
+23,20,conform to,"~을 따르다, ~에 순응하다"
+23,21,deviate from,"~에서 벗어나다, 이탈하다"
+23,22,conducive,"도움이 되는, 어떤 결과를 가능하게 하거나 촉진하는"
+23,23,declarative,"선언적인, 진술적인"
+23,24,procedural,"절차적인, 과정적인"
+23,25,outdated,"시대에 뒤떨어진, 구식의"
+23,26,pace,속도
+23,27,antecedent,"선행하는, 앞서는"
+23,28,ceremonial,"의식적인, 공식적인"
+23,29,printable,"인쇄 가능한, 출판 가능한"
+23,30,groveling,굽실거리는
+23,31,censored,검열된
+23,32,satire,풍자
+23,33,province,"범위, 영역"
+23,34,euphemism,완곡어법
+23,35,conjoin,"결합하다, 연결하다"
+23,36,constituent,(문법) 구성 요소
+23,37,abstain,"삼가다, 금하다"
+23,38,imbibe,"(특히 술을) 마시다, 섭취하다"
+23,39,flawed,결함이 있는
+23,40,random assignment,무작위 배정
+23,41,teetotaling,금주하는
+23,42,slave's atmosphere,(비유) 노예의 분위기
+23,43,liberate,"해방시키다, 자유롭게 하다"
+23,44,hawk,매 (맹금류)
+23,45,widening gyre,(문학적 비유) 넓어지는 소용돌이
+23,46,commentary,"해설, 논평"
+23,47,vacant barn,비어있는 헛간
+23,48,double blind,이중 맹검법
+23,49,neutral,중립적인
+23,50,real communication,실제 의사소통
+23,51,under-represented,불충분하게 대변되는
+23,52,aloof,"냉담한, 거리를 두는"
+23,53,social construct,사회적 구성물
+23,54,hallowed hall,(비유) 신성한 홀
+23,55,vernacular,"(특정 지역이나 집단 사람들이 일상적으로 사용하는) 일상어, 방언"
+23,56,global error,전역 오류
+23,57,communication strategy,의사소통 전략
+23,58,intend,의도하다
+23,59,giggle,낄낄거리다
+23,60,nudge,(팔꿈치로) 쿡 찌르다
+24,1,hum,흥얼거리다
+24,2,stalwart,"굳센, 충직한"
+24,3,scaffolded help,비계 도움
+24,4,sociocultural perspective,사회문화적 관점
+24,5,Zone of Proximal Development,근접 발달 영역
+24,6,matrix,주절
+24,7,theta role,세타 역할
+24,8,anaphor,대용어
+24,9,sewer,"하수구, 오수관"
+24,10,dowsing,수맥 찾기
+24,11,emanate,"발산하다, 나오다"
+24,12,radiation,방사선
+24,13,hazardous,"위험한, 유해한"
+24,14,c-command,"c-지배, 구문 구조에서 한 노드가 다른 노드를 지배하는 관계"
+24,15,preliminary,"예비의, 사전의"
+24,16,fraudulent,"사기를 치는, 부정직한"
+24,17,perpendicular,"수직의, 직각의"
+24,18,random,무작위의
+24,19,decimeter,데시미터
+24,20,well-formed,적절한 형태를 갖춘
+24,21,projection,"예측, 투영"
+24,22,impart,"전하다, 주다"
+24,23,supervise,감독하다
+24,24,voiceless,무성음의
+24,25,voiced,유성음의
+24,26,gossamer,거미줄처럼 가벼운
+24,27,jostling,부딪히며 밀치는
+24,28,jockey for place,위치 다툼을 하는
+24,29,clear their throat,목청을 가다듬다
+24,30,small bankers,(비유) 작은 은행가들
+24,31,turret,(성벽의) 작은 탑
+24,32,speck,"작은 조각, 얼룩"
+24,33,nutmeg,육두구 (향신료)
+24,34,keel,(배의) 용골
+24,35,balsa,발사 나무
+24,36,Generals,장군들 (비유)
+24,37,rite of passage,통과 의례
+24,38,conversion,"전환, 변환"
+24,39,revere,"존경하다, 숭배하다"
+24,40,subvert,"전복시키다, 약화시키다"
+24,41,compunction,"양심의 가책, 후회"
+24,42,pejorative,"경멸적인, 비난조의"
+24,43,illusionism,"진짜 같은 환영법, 착시법"
+24,44,fatalism,운명론
+24,45,materialism,"유물론, 물질주의"
+24,46,nihilism,허무주의
+24,47,tavern,"선술집, 여인숙"
+24,48,pipe dream,허황된 꿈
+24,49,plot,"줄거리, 구성"
+24,50,climax,"절정, 최고조"
+24,51,resolution,"해결, 결말"
+24,52,stanza,연 (시(詩)의 단락)
+24,53,verse,"시, 연, 운문"
+24,54,simile,직유
+24,55,irony,"아이러니, 반어"
+24,56,allegory,"우의, 풍유"
+24,57,motif,"모티프, 주제의 반복"
+24,58,elicitation,"유도, 유발"
+24,59,pedagogical task,교수학습 과제
+24,60,contextual cue,맥락 단서
+25,1,enumerate,"열거하다, 하나하나 세다"
+25,2,detract,"(가치·명성 등을) 떨어뜨리다, 손상시키다"
+25,3,equitable,"공정한, 공평한"
+25,4,implausible,"믿기 어려운, 그럴듯하지 않은"
+25,5,dispel,"(의심·불안 등을) 없애다, 떨쳐 버리다"
+25,6,artifact,"인공물, 유물"
+25,7,artistry,"예술성, 기교"
+25,8,insightful,통찰력 있는
+25,9,magnitude,"규모, 중요성"
+25,10,overwhelmed,"압도된, 감당할 수 없는"
+25,11,foresee,"예견하다, 내다보다"
+25,12,specimen,"표본, 견본"
+25,13,judiciously,"신중하게, 현명하게"
+25,14,inundated,감당 못 할 정도로 많은
+25,15,consecutive,"연속적인, 계속되는"
+25,16,exemplified,"예시된, 좋은 예가 되는"
+25,17,preceding,"이전의, 앞선"
+25,18,deceptively,"속이는 듯이, 겉보기와 달리"
+25,19,imply,"암시하다, 내포하다"
+25,20,steadfast,"확고한, 변함없는"
+25,21,loathsome,"혐오스러운, 역겨운"
+25,22,inhibition,"억제, 금지"
+25,23,profane,"불경스러운, 세속적인"
+25,24,bustle,"부산함, 분주함"
+25,25,agitation,"동요, 불안"
+25,26,pressing,"긴급한, 중요한"
+25,27,multitasking,"멀티태스킹, 다중 작업"
+25,28,output,"결과, 산출량"
+25,29,allege,"주장하다, 혐의를 제기하다"
+25,30,expeditious,"신속한, 효율적인"
+25,31,empathetic,공감하는
+25,32,validate,"입증하다, 확인하다"
+25,33,simulation,"모방, 흉내"
+25,34,unyielding,"굽히지 않는, 단호한"
+25,35,superficial,"표면적인, 외견상의"
+25,36,assign,"할당하다, 부여하다"
+25,37,mislabelling,"오표기, 잘못된 라벨링"
+25,38,proviso,"단서, 조건"
+25,39,fanciful,"상상 속의, 기발한"
+25,40,imitation,"모조품, 흉내"
+25,41,doze off,"잠들다, 졸다"
+25,42,ephemeral,"단명하는, 덧없는"
+25,43,conundrum,"수수께끼, 난제"
+25,44,verisimilitude,"진실성, 사실 같음"
+25,45,inchoate,"초기의, 불완전한"
+25,46,empiricism,"경험주의, 지식은 경험에서 온다는 철학"
+25,47,pallid,"창백한, 핼쑥한"
+25,48,poignant,"가슴 아픈, 신랄한"
+25,49,esoteric,"난해한, 비밀의"
+25,50,laconic,"말수가 적은, 간결한"
+25,51,bellicose,"호전적인, 싸움을 좋아하는"
+25,52,trenchant,"정곡을 찌르는, 날카로운"
+25,53,fastidious,"까다로운, 세심한"
+25,54,impecunious,"가난한, 무일푼의"
+25,55,nascent,"초기의, 발생기의"
+25,56,tacit,"암묵적인, 무언의"
+25,57,oscillate,"진동하다, 흔들리다"
+25,58,prodigious,"엄청난, 거대한"
+25,59,disseminate,"흩뿌리다, 전파하다"
+25,60,surreptitious,"비밀의, 몰래 하는"
+26,1,pernicious,"치명적인, 해로운"
+26,2,deleterious,"해로운, 유해한"
+26,3,abrogate,"폐지하다, 철회하다"
+26,4,demur,"이의를 제기하다, 반대하다"
+26,5,ebullient,"활기 넘치는, 열광적인"
+26,6,fortuitous,"우연한, 행운의"
+26,7,meticulous,"꼼꼼한, 세심한"
+26,8,plethora,"과잉, 다량"
+26,9,spurious,"가짜의, 위조의"
+26,10,wistful,"애석해하는, 그리워하는"
+26,11,zenith,"정점, 절정"
+26,12,nadir,"최저점, 밑바닥"
+26,13,capricious,"변덕스러운, 예측 불가능한"
+26,14,dogmatic,"독단적인, 교조적인"
+26,15,effusive,감정을 넘치게 표현하는
+26,16,magnanimous,"관대한, 도량이 넓은"
+26,17,obdurate,"고집이 센, 완고한"
+26,18,ascetic,금욕적인
+26,19,chide,"꾸짖다, 잔소리하다"
+26,20,contrite,깊이 뉘우치는
+26,21,confrontation,"(의견·이해관계의 충돌로 인한) 대립, 대면"
+26,22,garrulous,"말이 많은, 수다스러운"
+26,23,gravitate,"끌리다, 자연스럽게 향하다, 저절로 움직이거나 관심이 가다"
+26,24,immutable,"불변의, 바꿀 수 없는"
+26,25,jocular,"익살맞은, 농담하는"
+26,26,kudos,"영광, 찬사"
+26,27,languid,"나른한, 활기 없는"
+26,28,mellifluous,"감미로운, 듣기 좋은"
+26,29,noxious,"유독한, 해로운"
+26,30,ostracize,"배척하다, 추방하다"
+26,31,parity,"동등, 일치"
+26,32,quiescent,"정지한, 활동이 없는"
+26,33,reticent,"과묵한, 말이 없는"
+26,34,solicitous,"염려하는, 걱정하는"
+26,35,tantamount,"~와 마찬가지의, 동등한"
+26,36,zealous,"열정적인, 열심인"
+26,37,circumvent,"피해가다, 우회하다"
+26,38,harbinger,"선구자, 징조"
+26,39,metamorphosis,"변태, 변형"
+26,40,perfunctory,"형식적인, 의무적인"
+26,41,tenuous,"미약한, 보잘것없는"
+26,42,bolster,"강화하다, 지지하다"
+26,43,cryptic,"수수께끼 같은, 암호 같은"
+26,44,fervid,"열렬한, 열정적인"
+26,45,probity,"정직, 청렴"
+26,46,somber,"어두침침한, 우울한"
+26,47,torpid,"무기력한, 둔한"
+26,48,atrophy,"위축되다, 퇴화하다"
+26,49,burgeoning,"급증하는, 발전하는"
+26,50,clandestine,"은밀한, 비밀의"
+26,51,dearth,"부족, 결핍"
+26,52,protégé,"제자, 선배의 보호·지도 아래 있는 사람"
+26,53,extol,"극찬하다, 칭찬하다"
+26,54,fatigue,"(육체·정신적 활동으로 인한) 피로, 기진"
+26,55,germane,"관련된, 적절한"
+26,56,nuance,"미묘한 차이, 뉘앙스"
+26,57,obliterate,"지우다, 제거하다"
+26,58,panacea,만병통치약
+26,59,querulous,"불평이 많은, 툴툴거리는"
+26,60,respite,"휴식, 유예"
+27,1,veracity,"진실성, 정확성"
+27,2,corpulent,"뚱뚱한, 살찐"
+27,3,fathom,"헤아리다, 이해하다"
+27,4,guile,"교활함, 간계"
+27,5,impervious,"통과할 수 없는, 영향을 받지 않는"
+27,6,kindle,"불을 붙이다, 자극하다"
+27,7,lethargy,"무기력, 혼수"
+27,8,myriad,무수히 많은
+27,9,obstinate,"완고한, 고집이 센"
+27,10,propensity,"성향, 경향"
+27,11,redundant,"불필요한, 장황한"
+27,12,sanguine,"낙관적인, 쾌활한"
+27,13,trepidation,"두려움, 떨림"
+27,14,uncanny,"이상한, 묘한"
+27,15,vehement,"격렬한, 열정적인"
+27,16,wanton,"마음대로의, 무자비한"
+27,17,yoke,"멍에, 구속"
+27,18,aberration,"일탈, 비정상"
+27,19,acrimonious,"앙심을 품은, 신랄한"
+27,20,activate,(어떤 기능이나 과정을) 활성화하다
+27,21,deride,"조롱하다, 비웃다"
+27,22,galvanize,"자극하다, 활성화시키다"
+27,23,hiatus,"중단, 공백"
+27,24,idiosyncrasy,"특이성, 기이함"
+27,25,languish,"쇠약해지다, 시들다"
+27,26,maverick,"독불장군, 개성이 강한 사람"
+27,27,paucity,"부족, 소량"
+27,28,quixotic,"돈키호테 식의, 비현실적인"
+27,29,replete,"가득한, 충분한"
+27,30,sophistry,궤변
+27,31,anomaly,"변칙, 이례"
+27,32,credence,"신임, 신뢰"
+27,33,exigent,"위급한, 절박한"
+27,34,impunity,처벌을 면함
+27,35,resentful,"분개한, 원망하는"
+27,36,dishonest,"부정직한, 거짓의"
+27,37,blur,"흐리게 하다, 모호하게 만들다"
+27,38,disloyal,"불성실한, 배신하는"
+27,39,sardonic,"냉소적인, 비꼬는"
+27,40,impassive,"무표정한, 감정을 드러내지 않는"
+27,41,haughty,"거만한, 오만한"
+27,42,bulky,"부피가 큰, 다루기 힘든"
+27,43,venerate,"존경하다, 숭배하다"
+27,44,whimsical,"변덕스러운, 기발한"
+27,45,zany,"우스꽝스러운, 별난"
+27,46,impute,"(죄·불명예 등을) ~에게 돌리다"
+27,47,haptics,"촉각학(신체 접촉과 감각을 연구하거나 설명하는 분야), 접촉 행동"
+27,48,nonchalant,"무관심한, 태연한"
+27,49,reprobate,"(n) 타락한 사람, (a) 무뢰한"
+27,50,serendipity,뜻밖의 행운
+27,51,surfeit,"과다, 과식"
+27,52,unremitting,"끊임없는, 쉼 없는"
+27,53,vicarious,"대리 만족의, 간접적인"
+27,54,vociferous,"소리 높여 외치는, 떠들썩한"
+27,55,wry,"비꼬는, 씁쓸한"
+27,56,abject,"비참한, 절망적인"
+27,57,concord,"화합, 일치"
+27,58,decry,"비난하다, 헐뜯다"
+27,59,misanthrope,인간 혐오자
+27,60,notwithstanding,~에도 불구하고
+28,1,covet,몹시 탐내다
+28,2,notoriety,"악명, 평판"
+28,3,endow,"기부하다, 부여하다"
+28,4,almshouse,구빈원 (고어적 표현)
+28,5,dreadnought,거대한 전함 (특이적 표현)
+28,6,totter,"비틀거리다, 흔들리다"
+28,7,thrust,"세게 밀치다, 찔러 넣다"
+28,8,aberrant,"비정상적인, 일탈한"
+28,9,abstruse,난해한
+28,10,accretion,"축적, 증가"
+28,11,adherent,"지지자, 추종자"
+28,12,adversary,"적, 상대"
+28,13,altruistic,이타적인
+28,14,ameliorate,개선하다
+28,15,anachronism,시대착오
+28,16,apportion,배분하다
+28,17,arbitrary,"임의의, 독단적인"
+28,18,assertive,"단호한, 적극적인"
+28,19,attuned,"조화된, 잘 맞는"
+28,20,augmentation,"(크기·양·효과 등의) 증가, 확대"
+28,21,belittle,폄하하다
+28,22,brevity,간결함
+28,23,buoyant,"쾌활한, 활기찬"
+28,24,catalyst,"촉매, 계기"
+28,25,circumspect,신중한
+28,26,coalesce,합쳐지다
+28,27,cognition,"인지, 인식"
+28,28,collate,"대조하다, 맞추다"
+28,29,commensurate,"상응하는, 비례한"
+28,30,communal,"공동의, 공유의"
+28,31,complacent,"자기만족의, 안주하는"
+28,32,concur,"동의하다, 일치하다"
+28,33,condone,"묵인하다, 용납하다"
+28,34,conflate,"혼합하다, 합치다"
+28,35,conspicuity,"뚜렷함, 눈에 띔"
+28,36,contend,"주장하다, 다투다"
+28,37,culminate,"정점에 달하다, 끝나다"
+28,38,debunk,"정체를 밝히다, (틀렸음을) 드러내다"
+28,39,deferential,"공손한, 경의를 표하는"
+28,40,delineate,"묘사하다, 윤곽을 그리다"
+28,41,demarcate,"구분하다, 경계를 정하다"
+28,42,denote,"나타내다, 의미하다"
+28,43,desist,"그만두다, 중지하다"
+28,44,configure,"구성하다, 설정하다, 특정 목적에 맞게 배치하거나 조정하다"
+28,45,diffident,"소심한, 자신감 없는"
+28,46,dilute,"희석하다, 약화시키다"
+28,47,disparate,"이질적인, 본질적으로 다른"
+28,48,dissent,"반대, 이의"
+28,49,eclectic,"절충적인, 다양한"
+28,50,emulate,"모방하다, 능가하다"
+28,51,endemic,"고유한, 풍토적인"
+28,52,erratic,"불규칙한, 변덕스러운"
+28,53,espouse,"지지하다, 신봉하다"
+28,54,exacerbate,악화시키다
+28,55,exemplify,전형적으로 보여주다
+28,56,fallacious,"잘못된, 허위의"
+28,57,fluctuate,변동하다
+28,58,formidable,"어마어마한, 위압적인"
+28,59,fortify,"강화하다, 보강하다"
+28,60,gregarious,사교적인
+29,1,gratuitous,"불필요한, 쓸데없는"
+29,2,hindrance,"방해, 장애"
+29,3,illicit,"불법의, 부정한"
+29,4,impediment,"방해물, 장애"
+29,5,imperative,"필수적인, 긴요한"
+29,6,implicate,"연루시키다, 관련시키다"
+29,7,improvised,"즉흥적인, 임시의"
+29,8,inadvertent,"부주의한, 의도하지 않은"
+29,9,incessant,끊임없는
+29,10,incipient,"초기의, 막 시작된"
+29,11,incriminate,죄를 씌우다
+29,12,incumbent,"의무로서 요구되는, 재임 중인"
+29,13,indigenous,토착의
+29,14,indolent,"게으른, 나태한"
+29,15,inept,"서투른, 무능한"
+29,16,inferential,"추론의, 추정에 의한"
+29,17,insidious,"서서히 퍼지는, 교묘한"
+29,18,instigate,"선동하다, 촉발하다"
+29,19,intrepid,"용감한, 대담한"
+29,20,intricate,"복잡한, 정교한"
+29,21,invigorate,활기를 주다
+29,22,juncture,"중요한 시점, 연결점"
+29,23,latent,"잠재된, 숨은"
+29,24,lenient,"관대한, 너그러운"
+29,25,malevolent,"악의적인, 해로운"
+29,26,mundane,"세속적인, 평범한"
+29,27,nefarious,"사악한, 범죄의"
+29,28,onerous,"부담스러운, 고된"
+29,29,peripheral,"주변의, 부수적인"
+29,30,permeate,"스며들다, 퍼지다"
+29,31,pertinent,"적절한, 관련된"
+29,32,augment,"확대하다, 증가시키다"
+29,33,temporal,"시간의, 시간적 순서·범주·제약과 관련된"
+29,34,judicious,"현명한, 신중한"
+29,35,precursor,"선구자, 전조"
+29,36,procrastinate,"게으름을 피우다, 일을 미루다"
+29,37,adjutant,"부하, 보좌관"
+29,38,rucksack,"배낭, 짐"
+29,39,conspiracy,"음모, 계략"
+29,40,obscene,"음란한, 외설적인"
+29,41,skeptical,의심 많은
+29,42,perspire,더위로 땀을 흘리다
+29,43,fragile,"연약한, 부서지기 쉬운"
+29,44,eventuate,결과로서 일어나다
+29,45,slender,마르고 길쭉한
+29,46,abnormal,"비정상적인, 기이한"
+29,47,destitute,"가난한, 궁핍한"
+29,48,tedious,"지루한, 짜증나는"
+29,49,spot-on,"정확히 맞는, 아주 정확한"
+29,50,devious,"정직하지 않은, 기만적인"
+29,51,proficient,"능숙한, 숙련된"
+29,52,hoodwink,"속이다, 현혹하다"
+29,53,residue,"찌꺼기, 잔여물"
+29,54,bulge,"튀어나온 부분, 돌출부"
+29,55,decipher,"해독하다, 판독하다"
+29,56,tentative,"잠정적인, 시험적인"
+29,57,robust,"튼튼한, 강력한"
+29,58,curtail,"줄이다, 축소하다"
+29,59,sublime,"숭고한, 탁월한"
+29,60,paragon,"귀감, 완벽한 모범"
+30,1,abandonment,"버림, 유기"
+30,2,annuity,연금
+30,3,circumlocution,우회적 표현
+30,4,collaborative,협력적인
+30,5,consciousness,의식
+30,6,equanimity,평정
+30,7,executive,임원·관리의
+30,8,expansion,확장
+30,9,expression,표현
+30,10,glottal,성문(의)
+30,11,evaluation,평가
+30,12,interaction,상호 작용
+30,13,mutation,돌연변이
+30,14,nothingness,"무, 공허"
+30,15,perpetuity,영속성
+30,16,preverbal,동사 앞의
+30,17,providence,섭리
+30,18,radical,"근본적인, 급진적인"
+30,19,reflexively,"반사적으로, 재귀적으로"
+30,20,residual,잔여의
+30,21,synchronous,동시 발생의
+30,22,metalinguistic,메타언어적인
+30,23,epistemic,"인지적인, 지식에 관한"
+30,24,interlocutor,대화 상대
+30,25,prosodic,운율적인
+30,26,salience,현저성
+30,27,entailment,함의
+30,28,nominalization,명사화
+30,29,gradience,"점진성, 연속성"
+30,30,schematicity,도식성
+30,31,indexicality,지시성
+30,32,presupposition,전제
+30,33,felicity,적합조건
+30,34,performativity,수행성
+30,35,paratext,주변텍스트
+30,36,focalization,초점화
+30,37,intertextual,상호텍스트적인
+30,38,narrativity,서사성
+30,39,liminality,경계상태
+30,40,commodification,상품화
+30,41,hegemony,패권
+30,42,reification,실체화
+30,43,embodiment,구체화
+30,44,hybridity,혼종성
+30,45,transitivity,"타동성, 전이구조"
+30,46,allomorph,이형태
+30,47,polysemy,다의성
+30,48,dichotomization,이분화
+30,49,atmospheric,분위기 있는
+30,50,automatization,자동화
+30,51,multimodality,다중양식성
+30,52,translanguaging,트랜스랭귀징
+30,53,acculturation,문화적 적응
+30,54,ethnography,민족지 연구
+30,55,stratification,계층화
+30,56,diachronic,통시적인
+30,57,idiolect,개인 언어체
+30,58,superordinate,상위범주
+30,59,prototypicality,원형성
+30,60,allegorical,"우의적인, 상징적인"
+</script>
+
+
+<script>
+    // CSV 파싱 함수
+    function parseCSVLine(text) {
+        let arr = [];
+        let quote = false;
+        let col = '';
+        for (let i = 0; i < text.length; i++) {
+            let c = text[i];
+            if (c === '"') { quote = !quote; continue; }
+            if (c === ',' && !quote) { arr.push(col.trim()); col = ''; continue; }
+            col += c;
+        }
+        arr.push(col.trim());
+        return arr;
+    }
+
+    // 배열 섞기 함수
+    function shuffle(array) {
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+        }
+        return array;
+    }
+
+    function generateTest() {
+        // 숨겨둔 script 태그 안에서 텍스트(데이터)를 가져옵니다.
+        const rawData = document.getElementById('vocaDatabase').textContent.trim();
+        const targetDay = parseInt(document.getElementById('targetDay').value);
+        const randomize = document.getElementById('randomize').checked;
+
+        const lines = rawData.split('\n');
+        let dayWords = [];
+
+        // 데이터 추출 (입력된 Day에 해당하는 단어만 수집)
+        for(let i = 1; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if(!line) continue;
+            
+            const cols = parseCSVLine(line);
+            if(cols.length < 3) continue;
+
+            const day = parseInt(cols[0]);
+            if(day === targetDay) {
+                dayWords.push({
+                    originalNum: cols[1],
+                    word: cols[2],
+                    mean: cols.slice(3).join(', ')
+                });
+            }
+        }
+
+        if(dayWords.length === 0) { 
+            alert(`선택하신 Day ${targetDay} 에 해당하는 단어가 없습니다.\n(하단 데이터 내장 영역에 올바르게 붙여넣었는지 확인해주세요.)`); 
+            return; 
+        }
+
+        // 옵션에 따라 배열 섞기
+        if (randomize) {
+            shuffle(dayWords);
+        }
+
+        const printArea = document.getElementById('printArea');
+        let htmlStr = '';
+
+        // ======== 1페이지: 문제지 ========
+        htmlStr += `<div class="page page-break">
+            <div class="test-title">VOCA 단어 테스트 (Day ${targetDay})</div>
+            <div class="student-info">
+                이름: <span></span> 점수: <span style="width: 80px;"></span> / ${dayWords.length}
+            </div>
+            <div class="exam-grid">`;
+
+        dayWords.forEach((item, idx) => {
+            htmlStr += `
+                <div class="exam-item">
+                    <div class="exam-num">${idx + 1}.</div>
+                    <div class="exam-word">${item.word}</div>
+                    <div class="exam-blank"></div>
+                </div>`;
+        });
+
+        htmlStr += `</div></div>`;
+
+        // ======== 2페이지: 정답지 ========
+        htmlStr += `<div class="page">
+            <div class="test-title" style="border-bottom:none; margin-bottom:10px;">Day ${targetDay} 정답지</div>
+            <table class="ans-table">
+                <thead>
+                    <tr>
+                        <th style="width: 8%;">출제 번호</th>
+                        <th style="width: 10%;">원래 번호</th>
+                        <th style="width: 32%;">단어</th>
+                        <th style="width: 50%;">뜻</th>
+                    </tr>
+                </thead>
+                <tbody>`;
+
+        dayWords.forEach((item, idx) => {
+            htmlStr += `
+                <tr>
+                    <td style="text-align: center;"><b>${idx + 1}</b></td>
+                    <td style="text-align: center; color: #666;">${item.originalNum}번</td>
+                    <td><b>${item.word}</b></td>
+                    <td>${item.mean}</td>
+                </tr>`;
+        });
+
+        htmlStr += `</tbody></table></div>`;
+
+        // 화면 전환
+        document.getElementById('appScreen').style.display = 'none';
+        printArea.innerHTML = htmlStr;
+        printArea.style.display = 'block';
+        document.getElementById('btnBack').style.display = 'block';
+        
+        // 인쇄 다이얼로그 호출
+        setTimeout(() => { window.print(); }, 300);
+    }
+
+    // 뒤로가기 (앱 화면으로 복귀)
+    function goBack() {
+        document.getElementById('printArea').style.display = 'none';
+        document.getElementById('btnBack').style.display = 'none';
+        document.getElementById('appScreen').style.display = 'block';
+    }
+</script>
+
+</body>
+</html>
